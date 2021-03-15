@@ -11,15 +11,17 @@ from pprint import pprint
 class TrainRouter:
     def __init__(self):
 
-        # Get access variables from the environment
+        # Get access variables for external services from environment variables
         self.vault_url = os.getenv("VAULT_URL")
         self.vault_token = os.getenv("VAULT_TOKEN")
         self.harbor_api = os.getenv("HARBOR_API")
         self.harbor_user = os.getenv("HARBOR_USER")
         self.harbor_pw = os.getenv("HARBOR_PW")
 
-        # Set up values for services
-        self.redis = redis.Redis(decode_responses=True)
+        # Configure redis instance if host is not available in env var use default localhost
+        self.redis = redis.Redis(host=os.getenv("REDIS_HOST", None), decode_responses=True)
+
+        # Set up header and auth for services
         self.vault_headers = {"X-Vault-Token": self.vault_token}
         self.harbor_headers = {'accept': 'application/json', 'Content-Type': 'application/json'}
         self.harbor_auth = (self.harbor_user, self.harbor_pw)
@@ -33,7 +35,7 @@ class TrainRouter:
                 data = self.get_route_data_from_vault(train_id)
                 self._add_route_to_redis(data)
             else:
-                print(f"Route for train {train_id}, already exists")
+                print(f"Route for train {train_id} already exists")
 
     def _get_all_routes_from_vault(self) -> List[str]:
         """
@@ -52,10 +54,10 @@ class TrainRouter:
         train_id = route["repositorySuffix"]
         stations = route["harborProjects"]
         # TODO maybe shuffle the participants
-        # Store
+        # Store the participating stations as well as the route type separately
         self.redis.rpush(f"{train_id}-stations", *stations)
         self.redis.set(f"{train_id}-type", "periodic" if route["periodic"] else "linear")
-
+        # TODO store the number of epochs somewhere/ also needs to be set when specifying periodic routes
 
     def get_route_data_from_vault(self, train_id: str) -> dict:
         """
@@ -70,7 +72,8 @@ class TrainRouter:
         return r.json()["data"]["data"]
 
     def process_route(self, train_id: str):
-        route = self.redis.lrange()
+        route_type = self.redis.get(f"{train_id}-type")
+        # TODO check if the route exists otherwise move to pht_outgoing
         pass
 
     def move_image(self, train_id: str, origin: str, dest: str):
