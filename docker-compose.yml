@@ -1,0 +1,18 @@
+version: '3.8'
+services:
+#  train_router:
+#    build: .
+#    restart: always
+#    environment:
+#      - VAULT_TOKEN=<token>
+#      - VAULT_URL=https://vault.pht.medic.uni-tuebingen.de
+#      - HARBOR_API=https://harbor.personalhealthtrain.de/api/v2.0
+#      - HARBOR_USER=graf
+#      - HARBOR_PW=<harbor_pw>
+#      - UI_TRAIN_API=http://pht-ui.personalhealthtrain.de/api/pht/trains/
+#      - AMPQ_URL=<ampq_url>
+
+  redis:
+      image: "redis:alpine"
+      ports:
+        - 6379:6379
