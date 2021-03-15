@@ -6,6 +6,7 @@ from dotenv import find_dotenv, load_dotenv
 import requests
 from typing import List
 from pprint import pprint
+import random
 
 
 class TrainRouter:
@@ -26,11 +27,26 @@ class TrainRouter:
         self.harbor_headers = {'accept': 'application/json', 'Content-Type': 'application/json'}
         self.harbor_auth = (self.harbor_user, self.harbor_pw)
 
+    def process_train(self, train_id: str):
+        route_type = self.redis.get(f"{train_id}-type")
+        # TODO perform different actions based on route type
+
+        # If the route exists move to next station project
+
+        if self.redis.get(f"{train_id}-route"):
+            next_station_id = self.redis.rpop(f"{train_id}-route")
+
+        # otherwise move to pht_outgoing
+        else:
+            pass
+
+
     def sync_routes_with_vault(self):
         routes = self._get_all_routes_from_vault()
 
         # Iterate over all routes and add them to redis if they dont exist
         for train_id in routes:
+            self.redis.delete(f"{train_id}-stations", f"{train_id}-type")
             if not self.redis.exists(f"{train_id}-stations"):
                 data = self.get_route_data_from_vault(train_id)
                 self._add_route_to_redis(data)
@@ -50,14 +66,23 @@ class TrainRouter:
         return routes
 
     def _add_route_to_redis(self, route: dict):
+        """
+        Takes the route data received from vault and stores it in redis for processing
+        :param route: dictionary containing the participating stations, route type and train id
+        :return:
+        """
 
         train_id = route["repositorySuffix"]
         stations = route["harborProjects"]
-        # TODO maybe shuffle the participants
         # Store the participating stations as well as the route type separately
         self.redis.rpush(f"{train_id}-stations", *stations)
+        # Shuffle the stations to create a randomized route
+        random.shuffle(stations)
+        self.redis.rpush(f"{train_id}-route", *stations)
         self.redis.set(f"{train_id}-type", "periodic" if route["periodic"] else "linear")
         # TODO store the number of epochs somewhere/ also needs to be set when specifying periodic routes
+
+
 
     def get_route_data_from_vault(self, train_id: str) -> dict:
         """
@@ -71,18 +96,14 @@ class TrainRouter:
 
         return r.json()["data"]["data"]
 
-    def process_route(self, train_id: str):
-        route_type = self.redis.get(f"{train_id}-type")
-        # TODO check if the route exists otherwise move to pht_outgoing
-        pass
-
-    def move_image(self, train_id: str, origin: str, dest: str):
+    def _move_image(self, train_id: str, origin: str, dest: str):
+        # TODO move base and latest image
         pass
 
     def scan_harbor(self):
         pass
 
-    def scan_harbor_project(self, project_id: str) -> dict:
+    def scan_harbor_project(self, project_id: str) -> List[dict]:
         """
         Scan a harbor projects listing all the repositories in the image
 
@@ -91,8 +112,25 @@ class TrainRouter:
         """
         url = self.harbor_api + f"/projects/{project_id}/repositories"
         r = requests.get(url, headers=self.harbor_headers, auth=self.harbor_auth)
+        repos = r.json()
 
-        return r.json()
+        for repo in repos:
+            train_id = repo["name"].split("/")[-1]
+            if self._check_artifact_label(project_id, train_id):
+                # TODO get route and move image
+                pass
+        return repos
+
+    def _check_artifact_label(self, project_id: str, train_id: str, tag: str = "latest"):
+        url = f'{self.harbor_api}/projects/{project_id}/repositories/{train_id}/artifacts/{tag}'
+        r = requests.get(url=url, headers=self.harbor_headers, auth=self.harbor_auth, params={"with_label": True})
+        labels = r.json()["labels"]
+        if labels and not any(d["name"] == "pht_next" for d in labels):
+            print("Found next label ")
+            return True
+        else:
+            return False
+
 
 
 
@@ -107,5 +145,5 @@ if __name__ == '__main__':
     train_id = "00673752-7126-4a84-8d25-99fd39fb273d"
 
     # print(tr.get_route_from_vault(train_id))
-    # tr.scan_harbor_project("1")
-    tr.sync_routes_with_vault()
+    print(tr.scan_harbor_project("1"))
+    # tr.sync_routes_with_vault()
