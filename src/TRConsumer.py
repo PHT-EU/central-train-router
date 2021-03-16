@@ -10,15 +10,8 @@ LOGGER = logging.getLogger(__name__)
 
 
 class TRConsumer(Consumer):
-    def __init__(self, amqp_url: str, queue: str = "", public_key_path: str = None, routing_key: str = None):
+    def __init__(self, amqp_url: str, queue: str = "", routing_key: str = None):
         super().__init__(amqp_url, queue, routing_key=routing_key)
-        # self.builder = TrainBuilder()
-        # self.pht_client = PHTClient(ampq_url=amqp_url, api_url=os.getenv("UI_TRAIN_API"),
-        #                             vault_url=os.getenv("vault_url"), vault_token=os.getenv("vault_token"))
-        #
-        # if public_key_path:
-        #     with open(public_key_path, "r") as public_key_file:
-        #         self.pk = public_key_file.read()
 
         # Set auto reconnect to true
         self.router = TrainRouter()
@@ -35,21 +28,23 @@ class TRConsumer(Consumer):
             message = json.loads(body)
             # print(json.dumps(message, indent=2))
         except:
-            # self.pht_client.publish_message_rabbit_mq(
-            #     {"type": "trainBuildFailed", "data": {"message": "Malformed JSON"}},
-            #     routing_key="ui")
             LOGGER.info("Malformed json input")
             super().on_message(_unused_channel, basic_deliver, properties, body)
-            return
         # LOGGER.info(f"Received message: \n {message}")
         self.process_message(message)
         super().on_message(_unused_channel, basic_deliver, properties, body)
 
     def process_message(self, msg: dict):
-        if msg["event"] == "trainPush":
-            self.router.process_train(msg["trainId"], msg["station"])
+        train_id = msg["trainId"]
+        if msg["event"] == "trainPushed":
+            self.router.process_train(train_id, msg["station"])
+        elif msg["event"] == "trainCreated":
+            self.router.get_route_data_from_vault(train_id)
+            # Move train from PHT incoming to first station
+            self.router.process_train(train_id, "pht_incoming")
         else:
             LOGGER.info(f"Invalid event {msg['event']}")
+
 
 
 def main():
