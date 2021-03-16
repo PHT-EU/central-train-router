@@ -7,6 +7,8 @@ import requests
 from typing import List
 from pprint import pprint
 import random
+import threading
+import time
 
 
 class TrainRouter:
@@ -19,6 +21,10 @@ class TrainRouter:
         self.harbor_user = os.getenv("HARBOR_USER")
         self.harbor_pw = os.getenv("HARBOR_PW")
 
+        # TODO get the registered projects from somewhere
+        # self.pht_projects = ["1", "2", "3", "pht_incoming"]
+        self.pht_projects = ["1", "pht_incoming"]
+
         # Configure redis instance if host is not available in env var use default localhost
         self.redis = redis.Redis(host=os.getenv("REDIS_HOST", None), decode_responses=True)
 
@@ -26,6 +32,25 @@ class TrainRouter:
         self.vault_headers = {"X-Vault-Token": self.vault_token}
         self.harbor_headers = {'accept': 'application/json', 'Content-Type': 'application/json'}
         self.harbor_auth = (self.harbor_user, self.harbor_pw)
+
+    def run(self):
+
+        scanning_thread = threading.Thread(target=self.update_trains)
+        scanning_thread.start()
+
+    def update_trains(self):
+        """
+        Periodically scan the registered harbor projects for images containing the pht_next label and process them
+        accordingly
+
+        :return:
+        """
+        while True:
+            for project in self.pht_projects:
+                print(f"Scanning project: {project}")
+                self.scan_harbor_project(project)
+
+            time.sleep(20)
 
     def scan_harbor_project(self, project_id: str):
         """
@@ -41,29 +66,31 @@ class TrainRouter:
         for repo in repos:
             train_id = repo["name"].split("/")[-1]
             if self._check_artifact_label(project_id, train_id):
-                self.process_train(train_id)
+                self.process_train(train_id, project_id)
 
-    def process_train(self, train_id: str):
+    def process_train(self, train_id: str, current_project: str):
         """
         Processes a train image tagged with the pht_next label according the route stored in redis
 
-        :param train_id:
+        :param current_project: the harbor project the train currently resides in
+        :param train_id: identifier of the train repository
         :return:
         """
 
         route_type = self.redis.get(f"{train_id}-type")
         # TODO perform different actions based on route type
         print(train_id, route_type)
-
         # If the route exists move to next station project
-
         if self.redis.exists(f"{train_id}-route"):
             next_station_id = self.redis.rpop(f"{train_id}-route")
-            print(next_station_id)
+            print(f"Moving train {train_id} from {current_project} to {next_station_id}")
+            self._move_train(train_id, origin=current_project, dest=next_station_id)
+
         # otherwise move to pht_outgoing
         else:
+            print("No Route found moving to pht outgoing")
             # TODO delete route from vault and redis
-            pass
+            self._move_train(train_id, origin=current_project, dest="pht_outgoing")
 
     def sync_routes_with_vault(self):
         """
@@ -126,7 +153,16 @@ class TrainRouter:
         return r.json()["data"]["data"]
 
     def _move_train(self, train_id: str, origin: str, dest: str, delete=True):
-        # TODO move base and latest image
+        """
+        Moves a train and its associated artifacts from the origin project to the destination project
+
+        :param train_id: identifier of the train
+        :param origin: project identifier of the project the image currently resides in
+        :param dest: project to move the image to
+        :param delete: boolean controlling wether to delete the image or not
+        :return:
+        """
+
         url = f"{self.harbor_api}/projects/{dest}/repositories/{train_id}/artifacts"
         params_latest = {"from": f"{origin}/{train_id}:latest"}
         params_base = {"from": f"{origin}/{train_id}:base"}
@@ -138,18 +174,26 @@ class TrainRouter:
         # Move latest image
         latest_r = requests.post(url=url, headers=self.harbor_headers, auth=self.harbor_auth, params=params_latest)
         print(latest_r.text)
+        # remove pht next label
+        # label_url = f"{self.harbor_api}/projects/{dest}/repositories/{train_id}/artifacts/latest/labels/2"
+        #
+        # label_r = requests.delete(label_url, headers=self.harbor_headers, auth=self.harbor_auth)
+        # print(label_r.text)
+
         if delete:
-            delete_url = f"{self.harbor_api}/projects/{origin}/repositories/{train_id}/artifacts/"
-            r_latest = requests.delete(delete_url + "latest")
-            print(r_latest.text)
-            r_base = requests.delete(delete_url + "base")
-
-
-
-
-
+            delete_url = f"{self.harbor_api}/projects/{origin}/repositories/{train_id}"
+            # TODO check why delete permissions are denied
+            r_delete = requests.delete(delete_url)
+            print(r_delete.text)
 
     def _check_artifact_label(self, project_id: str, train_id: str, tag: str = "latest"):
+        """
+        Check if a train image in a project contains the pht_next label
+        :param project_id: harbor project the train image is located in
+        :param train_id: identifier of the train
+        :param tag: the image to check for, defaults to latest
+        :return:
+        """
         url = f'{self.harbor_api}/projects/{project_id}/repositories/{train_id}/artifacts/{tag}'
         r = requests.get(url=url, headers=self.harbor_headers, auth=self.harbor_auth, params={"with_label": True})
         labels = r.json()["labels"]
@@ -166,10 +210,11 @@ if __name__ == '__main__':
     # tr.redis.delete("route-1")
     # tr.redis.lpush("route-1", *[1,2,3])
     # print(tr.redis.lrange("route-1", 0, -1))
+    tr.run()
 
-    train_id = "a3ea25fd-8a66-4f00-b193-ac8d5745f44c"
+    # train_id = "0b733446-3b4e-47f8-ad15-8a3ea1bdb11c"
 
     # print(tr.get_route_from_vault(train_id))
-    # print(tr.scan_harbor_project("1"))
+    # print(tr.scan_harbor_project("pht_incoming"))
     # tr.sync_routes_with_vault()
-    tr._move_train(train_id=train_id, origin="1", dest="2")
+    # tr._move_train(train_id=train_id, origin="1", dest="3")
