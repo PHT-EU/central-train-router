@@ -34,7 +34,6 @@ class TrainRouter:
         self.harbor_auth = (self.harbor_user, self.harbor_pw)
 
     def run(self):
-
         scanning_thread = threading.Thread(target=self.update_trains)
         scanning_thread.start()
 
@@ -88,9 +87,15 @@ class TrainRouter:
 
         # otherwise move to pht_outgoing
         else:
-            print("No Route found moving to pht outgoing")
-            # TODO delete route from vault and redis
+            print("No more steps in the route moving to pht_outgoing")
             self._move_train(train_id, origin=current_project, dest="pht_outgoing")
+
+            # Remove the entries for the train from redis
+            self.redis.delete(f"{train_id}-route")
+            self.redis.delete(f"{train_id}-stations")
+            self.redis.delete(f"{train_id}-type")
+
+            # TODO remove route from vault
 
     def sync_routes_with_vault(self):
         """
