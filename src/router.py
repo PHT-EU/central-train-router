@@ -9,6 +9,9 @@ from pprint import pprint
 import random
 import threading
 import time
+import logging
+
+LOGGER = logging.getLogger(__name__)
 
 
 class TrainRouter:
@@ -78,16 +81,15 @@ class TrainRouter:
 
         route_type = self.redis.get(f"{train_id}-type")
         # TODO perform different actions based on route type
-        print(train_id, route_type)
         # If the route exists move to next station project
         if self.redis.exists(f"{train_id}-route"):
             next_station_id = self.redis.rpop(f"{train_id}-route")
-            print(f"Moving train {train_id} from {current_project} to {next_station_id}")
+            LOGGER.info(f"Moving train {train_id} from {current_project} to {next_station_id}")
             self._move_train(train_id, origin=current_project, dest=next_station_id)
 
         # otherwise move to pht_outgoing
         else:
-            print("No more steps in the route moving to pht_outgoing")
+            LOGGER.info("No more steps in the route moving to pht_outgoing")
             self._move_train(train_id, origin=current_project, dest="pht_outgoing")
 
             # Remove the entries for the train from redis
@@ -214,8 +216,8 @@ if __name__ == '__main__':
     tr = TrainRouter()
     # tr.redis.delete("route-1")
     # tr.redis.lpush("route-1", *[1,2,3])
-    # print(tr.redis.lrange("route-1", 0, -1))
-    tr.run()
+    print(tr.redis.lrange("4ccbcf17-54d1-4cab-adb1-6c730808f0d6-route", 0, -1))
+    # tr.run()
 
     # train_id = "0b733446-3b4e-47f8-ad15-8a3ea1bdb11c"
 

@@ -6,8 +6,8 @@ import os
 import json
 import logging
 
-
 LOGGER = logging.getLogger(__name__)
+
 
 class TRConsumer(Consumer):
     def __init__(self, amqp_url: str, queue: str = "", public_key_path: str = None, routing_key: str = None):
@@ -21,6 +21,7 @@ class TRConsumer(Consumer):
         #         self.pk = public_key_file.read()
 
         # Set auto reconnect to true
+        self.router = TrainRouter()
         self.auto_reconnect = True
         # Configure routing key
         self.ROUTING_KEY = "tr"
@@ -36,8 +37,15 @@ class TRConsumer(Consumer):
             LOGGER.info("Malformed json input")
             super().on_message(_unused_channel, basic_deliver, properties, body)
             return
-        LOGGER.info(f"Received message: \n {message}")
+        # LOGGER.info(f"Received message: \n {message}")
+        self.process_message(message)
+        super().on_message(_unused_channel, basic_deliver, properties, body)
 
+    def process_message(self, msg: dict):
+        if msg["event"] == "trainPush":
+            self.router.process_train(msg["trainId"], msg["station"])
+        else:
+            LOGGER.info(f"Invalid event {msg['event']}")
 
 
 def main():
