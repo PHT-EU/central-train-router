@@ -26,6 +26,10 @@ class TRConsumer(Consumer):
         # Configure routing key
         self.ROUTING_KEY = "tr"
 
+    def run(self):
+        self.router.sync_routes_with_vault()
+        super().run()
+
     def on_message(self, _unused_channel, basic_deliver, properties, body):
         try:
             message = json.loads(body)

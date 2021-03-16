@@ -107,6 +107,8 @@ class TrainRouter:
         :return:
         """
 
+        LOGGER.info("Syncing redis routes with vault storage")
+
         routes = self._get_all_routes_from_vault()
 
         # Iterate over all routes and add them to redis if they dont exist
@@ -117,6 +119,7 @@ class TrainRouter:
                 self._add_route_to_redis(data)
             else:
                 print(f"Route for train {train_id} already exists")
+        LOGGER.info("Synchronized redis")
 
     def _get_all_routes_from_vault(self) -> List[str]:
         """
