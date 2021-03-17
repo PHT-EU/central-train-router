@@ -1,5 +1,6 @@
 {
-  "event": "trainPush",
-  "station": "1",
-  "trainId": "4ccbcf17-54d1-4cab-adb1-6c730808f0d6"
+  "type": "PUSH_ARTIFACT",
+  "data": {
+    "repositoryFullName": "1/4ccbcf17-54d1-4cab-adb1-6c730808f0d6"
+  }
 }

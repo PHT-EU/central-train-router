@@ -17,7 +17,7 @@ class TRConsumer(Consumer):
         self.router = TrainRouter()
         self.auto_reconnect = True
         # Configure routing key
-        self.ROUTING_KEY = "tr"
+        self.ROUTING_KEY = routing_key
 
     def run(self):
         self.router.sync_routes_with_vault()
@@ -35,22 +35,19 @@ class TRConsumer(Consumer):
         super().on_message(_unused_channel, basic_deliver, properties, body)
 
     def process_message(self, msg: dict):
-        train_id = msg["trainId"]
-        if msg["event"] == "trainPushed":
-            self.router.process_train(train_id, msg["station"])
-        elif msg["event"] == "trainCreated":
-            self.router.get_route_data_from_vault(train_id)
-            # Move train from PHT incoming to first station
-            self.router.process_train(train_id, "pht_incoming")
+        project, train_id = msg["data"]["repositoryFullName"].split("/")
+        print(project, train_id)
+        if msg["type"] == "PUSH_ARTIFACT":
+            self.router.process_train(train_id, project)
         else:
-            LOGGER.info(f"Invalid event {msg['event']}")
+            LOGGER.info(f"Invalid event {msg['type']}")
 
 
 
 def main():
     load_dotenv(find_dotenv())
     logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
-    tr_consumer = TRConsumer(os.getenv("AMPQ_URL"), "", routing_key="tr")
+    tr_consumer = TRConsumer(os.getenv("AMPQ_URL"), "", routing_key="tr.harbor")
     tr_consumer.run()
 
 
