@@ -91,13 +91,21 @@ class TrainRouter:
         else:
             LOGGER.info("No more steps in the route moving to pht_outgoing")
             self._move_train(train_id, origin=current_project, dest="pht_outgoing")
+            self._clean_up_finished_train(train_id)
 
-            # Remove the entries for the train from redis
-            self.redis.delete(f"{train_id}-route")
-            self.redis.delete(f"{train_id}-stations")
-            self.redis.delete(f"{train_id}-type")
+    def _clean_up_finished_train(self, train_id: str):
+        """
+        Removes the stored values from redis and vault once a train is finished and moved to the pht_outgoing project
 
-            # TODO remove route from vault
+        :param train_id:
+        :return:
+        """
+        # Remove the entries for the train from redis
+        self.redis.delete(f"{train_id}-route")
+        self.redis.delete(f"{train_id}-stations")
+        self.redis.delete(f"{train_id}-type")
+        # Remove route from vault storage
+        self._remove_route_from_vault(train_id)
 
     def sync_routes_with_vault(self):
         """
@@ -159,8 +167,13 @@ class TrainRouter:
         url = f"{self.vault_url}/v1/kv-pht-routes/data/{train_id}"
         r = requests.get(url, headers=self.vault_headers)
         route = r.json()["data"]["data"]
-
+        # Add the received route from redis
         self._add_route_to_redis(route)
+
+    def _remove_route_from_vault(self, train_id: str):
+        url = f"{self.vault_url}/v1/kv-pht-routes/data/{train_id}"
+        r = requests.delete(url, headers=self.vault_headers)
+        LOGGER.info(r.json())
 
     def _move_train(self, train_id: str, origin: str, dest: str, delete=True):
         """
