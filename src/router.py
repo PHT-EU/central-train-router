@@ -198,15 +198,15 @@ class TrainRouter:
         latest_r = requests.post(url=url, headers=self.harbor_headers, auth=self.harbor_auth, params=params_latest)
         print(latest_r.text)
         # remove pht next label
-        # label_url = f"{self.harbor_api}/projects/{dest}/repositories/{train_id}/artifacts/latest/labels/2"
-        #
-        # label_r = requests.delete(label_url, headers=self.harbor_headers, auth=self.harbor_auth)
-        # print(label_r.text)
+        label_url = f"{self.harbor_api}/projects/{dest}/repositories/{train_id}/artifacts/latest/labels/2"
+
+        label_r = requests.delete(label_url, headers=self.harbor_headers, auth=self.harbor_auth)
+        print(label_r.text)
 
         if delete:
             delete_url = f"{self.harbor_api}/projects/{origin}/repositories/{train_id}"
             # TODO check why delete permissions are denied
-            r_delete = requests.delete(delete_url)
+            r_delete = requests.delete(delete_url, auth=self.harbor_auth, headers=self.harbor_headers)
             print(r_delete.text)
 
     def _check_artifact_label(self, project_id: str, train_id: str, tag: str = "latest"):
