@@ -125,7 +125,7 @@ class TrainRouter:
             if not self.redis.exists(f"{train_id}-stations"):
                 self.get_route_data_from_vault(train_id)
             else:
-                print(f"Route for train {train_id} already exists")
+                LOGGER.info(f"Route for train {train_id} already exists")
         LOGGER.info("Synchronized redis")
 
     def _get_all_routes_from_vault(self) -> List[str]:
@@ -173,7 +173,7 @@ class TrainRouter:
     def _remove_route_from_vault(self, train_id: str):
         url = f"{self.vault_url}/v1/kv-pht-routes/data/{train_id}"
         r = requests.delete(url, headers=self.vault_headers)
-        LOGGER.info(r.json())
+        LOGGER.info(r.text)
 
     def _move_train(self, train_id: str, origin: str, dest: str, delete=True):
         """
@@ -191,23 +191,25 @@ class TrainRouter:
         params_base = {"from": f"{origin}/{train_id}:base"}
 
         # Move base image
+        LOGGER.info("Moving images")
         base_r = requests.post(url=url, headers=self.harbor_headers, auth=self.harbor_auth, params=params_base)
-        print(base_r.text)
+        LOGGER.info(f"base:  {base_r.text}")
 
         # Move latest image
         latest_r = requests.post(url=url, headers=self.harbor_headers, auth=self.harbor_auth, params=params_latest)
-        print(latest_r.text)
+        LOGGER.info(f"latest:  {latest_r.text}")
         # remove pht next label
         label_url = f"{self.harbor_api}/projects/{dest}/repositories/{train_id}/artifacts/latest/labels/2"
 
         label_r = requests.delete(label_url, headers=self.harbor_headers, auth=self.harbor_auth)
-        print(label_r.text)
+        LOGGER.info(f"Removing pht_next label: {label_r.text}")
 
         if delete:
+
             delete_url = f"{self.harbor_api}/projects/{origin}/repositories/{train_id}"
             # TODO check why delete permissions are denied
             r_delete = requests.delete(delete_url, auth=self.harbor_auth, headers=self.harbor_headers)
-            print(r_delete.text)
+            LOGGER.info(f"Deleting old artifacts \n {r_delete.text}")
 
     def _check_artifact_label(self, project_id: str, train_id: str, tag: str = "latest"):
         """
@@ -226,18 +228,3 @@ class TrainRouter:
         else:
             return False
 
-
-if __name__ == '__main__':
-    load_dotenv(find_dotenv())
-    tr = TrainRouter()
-    # tr.redis.delete("route-1")
-    # tr.redis.lpush("route-1", *[1,2,3])
-    print(tr.redis.lrange("4ccbcf17-54d1-4cab-adb1-6c730808f0d6-route", 0, -1))
-    # tr.run()
-
-    # train_id = "0b733446-3b4e-47f8-ad15-8a3ea1bdb11c"
-
-    # print(tr.get_route_from_vault(train_id))
-    # print(tr.scan_harbor_project("pht_incoming"))
-    # tr.sync_routes_with_vault()
-    # tr._move_train(train_id=train_id, origin="1", dest="3")

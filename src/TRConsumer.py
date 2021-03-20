@@ -1,3 +1,5 @@
+from typing import Union
+
 from train_lib.clients import Consumer, PHTClient
 from train_lib.clients.rabbitmq import LOG_FORMAT
 from router import TrainRouter
@@ -18,9 +20,9 @@ class TRConsumer(Consumer):
         self.auto_reconnect = True
         # Configure routing key
         self.ROUTING_KEY = routing_key
+        self.router.sync_routes_with_vault()
 
     def run(self):
-        self.router.sync_routes_with_vault()
         super().run()
 
     def on_message(self, _unused_channel, basic_deliver, properties, body):
@@ -28,20 +30,26 @@ class TRConsumer(Consumer):
             message = json.loads(body)
             # print(json.dumps(message, indent=2))
         except:
-            LOGGER.info("Malformed json input")
+            LOGGER.error("Malformed json input")
             super().on_message(_unused_channel, basic_deliver, properties, body)
-        # LOGGER.info(f"Received message: \n {message}")
         self.process_message(message)
         super().on_message(_unused_channel, basic_deliver, properties, body)
 
-    def process_message(self, msg: dict):
-        project, train_id = msg["data"]["repositoryFullName"].split("/")
-        print(project, train_id)
+    def process_message(self, msg: Union[dict, str]):
+
+        if type(msg) == str:
+            msg = json.loads(msg)
         if msg["type"] == "PUSH_ARTIFACT":
+            project, train_id = msg["data"]["repositoryFullName"].split("/")
+            LOGGER.info(f"Moving train: {train_id}")
             self.router.process_train(train_id, project)
+        elif msg["type"] == "TRAIN_BUILT":
+
+            train_id = msg["data"]["trainId"]
+            LOGGER.info(f"Adding route for new train {train_id}")
+            self.router.get_route_data_from_vault(train_id)
         else:
             LOGGER.info(f"Invalid event {msg['type']}")
-
 
 
 def main():
