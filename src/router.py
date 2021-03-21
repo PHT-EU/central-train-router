@@ -147,6 +147,8 @@ class TrainRouter:
         :return:
         """
 
+
+
         train_id = route["repositorySuffix"]
         stations = route["harborProjects"]
         # Store the participating stations as well as the route type separately
@@ -166,6 +168,7 @@ class TrainRouter:
         """
         url = f"{self.vault_url}/v1/kv-pht-routes/data/{train_id}"
         r = requests.get(url, headers=self.vault_headers)
+        print(r.json())
         route = r.json()["data"]["data"]
         # Add the received route from redis
         self._add_route_to_redis(route)
@@ -186,7 +189,10 @@ class TrainRouter:
         :return:
         """
 
-        url = f"{self.harbor_api}/projects/{dest}/repositories/{train_id}/artifacts"
+        if dest == "pht_outgoing":
+            url = f"{self.harbor_api}/projects/{dest}/repositories/{train_id}/artifacts"
+        else:
+            url = f"{self.harbor_api}/projects/station_{dest}/repositories/{train_id}/artifacts"
         params_latest = {"from": f"{origin}/{train_id}:latest"}
         params_base = {"from": f"{origin}/{train_id}:base"}
 
