@@ -52,7 +52,7 @@ class TRConsumer(Consumer):
             project, train_id = msg["data"]["repositoryFullName"].split("/")
 
             # Ignore push events by system services (such as the TR itself)
-            if not msg["data"]["operator"] == "system":
+            if not msg["data"].get("operator", "system") == "system":
                 LOGGER.info(f"Moving train: {train_id}")
                 self.router.process_train(train_id, project)
             else:

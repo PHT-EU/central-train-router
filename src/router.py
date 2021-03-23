@@ -196,6 +196,7 @@ class TrainRouter:
             url = f"{self.vault_url}/v1/kv-pht-routes/data/{train_id}"
             r = requests.get(url, headers=self.vault_headers)
             route = r.json()["data"]["data"]
+            print(r.json())
             # Add the received route from redis
             self._add_route_to_redis(route)
 
