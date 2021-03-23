@@ -36,26 +36,57 @@ class TRConsumer(Consumer):
         super().on_message(_unused_channel, basic_deliver, properties, body)
 
     def process_message(self, msg: Union[dict, str]):
+        """
+        Filter the type and info from the received message from rabbit mq, and perform actions using the train router
+        accordingly.
+
+        :param msg:
+        :return:
+        """
 
         if type(msg) == str:
             msg = json.loads(msg)
-        if msg["type"] == "PUSH_ARTIFACT":
+
+        # If a train is pushed by a station or user process if using the stored routed
+        if msg["type"] == "trainPushed":
             project, train_id = msg["data"]["repositoryFullName"].split("/")
-            LOGGER.info(f"Moving train: {train_id}")
-            self.router.process_train(train_id, project)
-        elif msg["type"] == "TRAIN_BUILT":
+
+            # Ignore push events by system services (such as the TR itself)
+            if not msg["data"]["operator"] == "system":
+                LOGGER.info(f"Moving train: {train_id}")
+                self.router.process_train(train_id, project)
+            else:
+                LOGGER.info(f"System Operation detected -> ignoring push event")
+
+        # Perform the initial setup for a train (set up redis k/v pairs)
+        elif msg["type"] == "trainBuilt":
 
             train_id = msg["data"]["trainId"]
             LOGGER.info(f"Adding route for new train {train_id}")
             self.router.get_route_data_from_vault(train_id)
+
+        # Start the train by setting its status in redis
+        elif msg["type"] == "startTrain":
+
+            train_id = msg["data"]["trainId"]
+            LOGGER.info(f"Starting train {train_id}.")
+            self.router.update_train_status(train_id, "running")
+
+        # Stop the train
+        elif msg["type"] == "stopTrain":
+            train_id = msg["data"]["trainId"]
+            LOGGER.info(f"Stopping train {train_id}.")
+            self.router.update_train_status(train_id, "stopped")
+
         else:
             LOGGER.info(f"Invalid event {msg['type']}")
 
 
 def main():
     load_dotenv(find_dotenv())
+    print(os.getenv("VAULT_URL"))
     logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
-    tr_consumer = TRConsumer(os.getenv("AMPQ_URL"), "", routing_key="tr.harbor")
+    tr_consumer = TRConsumer(os.getenv("AMPQ_URL"), "", routing_key="tr")
     tr_consumer.run()
 
 

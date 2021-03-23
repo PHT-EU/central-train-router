@@ -10,6 +10,7 @@ import random
 import threading
 import time
 import logging
+import traceback
 
 LOGGER = logging.getLogger(__name__)
 
@@ -70,6 +71,7 @@ class TrainRouter:
             if self._check_artifact_label(project_id, train_id):
                 self.process_train(train_id, project_id)
 
+
     def process_train(self, train_id: str, current_project: str):
         """
         Processes a train image tagged with the pht_next label according the route stored in redis
@@ -82,16 +84,38 @@ class TrainRouter:
         route_type = self.redis.get(f"{train_id}-type")
         # TODO perform different actions based on route type
         # If the route exists move to next station project
-        if self.redis.exists(f"{train_id}-route"):
-            next_station_id = self.redis.rpop(f"{train_id}-route")
-            LOGGER.info(f"Moving train {train_id} from {current_project} to {next_station_id}")
-            self._move_train(train_id, origin=current_project, dest=next_station_id)
 
-        # otherwise move to pht_outgoing
+        if route_type:
+
+            if self.redis.get(f"{train_id}-status") == "running":
+                if self.redis.exists(f"{train_id}-route"):
+                    next_station_id = self.redis.rpop(f"{train_id}-route")
+                    LOGGER.info(f"Moving train {train_id} from {current_project} to station_{next_station_id}")
+                    self._move_train(train_id, origin=current_project, dest=next_station_id)
+
+                # otherwise move to pht_outgoing
+                else:
+                    LOGGER.info(f"No more steps in the route moving {train_id} to pht_outgoing")
+                    self._move_train(train_id, origin=current_project, dest="pht_outgoing")
+                    self._clean_up_finished_train(train_id)
+            else:
+                LOGGER.info(f"Train {train_id} is stopped. Ignoring push event")
+
+
         else:
-            LOGGER.info("No more steps in the route moving to pht_outgoing")
-            self._move_train(train_id, origin=current_project, dest="pht_outgoing")
-            self._clean_up_finished_train(train_id)
+            LOGGER.info(f"Image {train_id} not registered. Ignoring...")
+
+    def update_train_status(self, train_id: str, status: str):
+        """
+        Update the train status of the train with the given id in redis with a new status
+
+        :param train_id: identifier of the train
+        :param status: the new status to be set in redis
+        :return:
+        """
+        self.redis.set(f"{train_id}-status", status)
+
+
 
     def _clean_up_finished_train(self, train_id: str):
         """
@@ -104,6 +128,7 @@ class TrainRouter:
         self.redis.delete(f"{train_id}-route")
         self.redis.delete(f"{train_id}-stations")
         self.redis.delete(f"{train_id}-type")
+        self.redis.delete(f"{train_id}-status")
         # Remove route from vault storage
         self._remove_route_from_vault(train_id)
 
@@ -121,8 +146,9 @@ class TrainRouter:
 
         # Iterate over all routes and add them to redis if they dont exist
         for train_id in routes:
-            self.redis.delete(f"{train_id}-stations", f"{train_id}-type")
+            # self.redis.delete(f"{train_id}-stations", f"{train_id}-type")
             if not self.redis.exists(f"{train_id}-stations"):
+                LOGGER.debug(f"Adding train {train_id} to redis storage.")
                 self.get_route_data_from_vault(train_id)
             else:
                 LOGGER.info(f"Route for train {train_id} already exists")
@@ -138,6 +164,7 @@ class TrainRouter:
 
         r = requests.get(url=url, params={"list": True}, headers=self.vault_headers)
         routes = r.json()["data"]["keys"]
+
         return routes
 
     def _add_route_to_redis(self, route: dict):
@@ -147,14 +174,13 @@ class TrainRouter:
         :return:
         """
 
-
-
         train_id = route["repositorySuffix"]
         stations = route["harborProjects"]
         # Store the participating stations as well as the route type separately
         self.redis.rpush(f"{train_id}-stations", *stations)
         # Shuffle the stations to create a randomized route
         random.shuffle(stations)
+        self.redis.rpush(f"{train_id}-status", "stopped")
         self.redis.rpush(f"{train_id}-route", *stations)
         self.redis.set(f"{train_id}-type", "periodic" if route["periodic"] else "linear")
         # TODO store the number of epochs somewhere/ also needs to be set when specifying periodic routes
@@ -166,12 +192,16 @@ class TrainRouter:
         :param train_id:
         :return:
         """
-        url = f"{self.vault_url}/v1/kv-pht-routes/data/{train_id}"
-        r = requests.get(url, headers=self.vault_headers)
-        print(r.json())
-        route = r.json()["data"]["data"]
-        # Add the received route from redis
-        self._add_route_to_redis(route)
+        try:
+            url = f"{self.vault_url}/v1/kv-pht-routes/data/{train_id}"
+            r = requests.get(url, headers=self.vault_headers)
+            route = r.json()["data"]["data"]
+            # Add the received route from redis
+            self._add_route_to_redis(route)
+
+        except:
+            LOGGER.error(f"Error getting routes from vault for train {train_id}")
+            LOGGER.exception("Traceback")
 
     def _remove_route_from_vault(self, train_id: str):
         url = f"{self.vault_url}/v1/kv-pht-routes/data/{train_id}"
