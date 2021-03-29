@@ -2,20 +2,23 @@ version: '3.8'
 services:
   train_router:
     build: .
-    environment:
-      - VAULT_TOKEN=s.JZuSRBRHI625RVwi7YZW1AeL
-      - VAULT_URL=http://vault:8200
-      - HARBOR_API=https://harbor.lukaszimmermann.dev/api/v2.0
-      - HARBOR_USER=graf
-      - HARBOR_PW=Start123!
-      - AMPQ_URL=amqp://admin:start123@rabbitmq:5672/
-      - REDIS_HOST=redis
+    env_file:
+      - .env
+#    environment:
+#      - VAULT_TOKEN=s.JZuSRBRHI625RVwi7YZW1AeL
+#      - VAULT_URL=http://vault:8200
+#      - HARBOR_API=https://harbor.lukaszimmermann.dev/api/v2.0
+#      - HARBOR_USER=graf
+#      - HARBOR_PW=Start123!
+#      - AMPQ_URL=amqp://admin:start123@rabbitmq:5672/
+#      - REDIS_HOST=redis
+
   redis:
       image: "redis:alpine"
       ports:
         - 6379:6379
 
-networks:
-    default:
-        external:
-            name: pht-network
+#networks:
+#    default:
+#        external:
+#            name: pht-network

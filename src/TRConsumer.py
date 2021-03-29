@@ -71,6 +71,8 @@ class TRConsumer(Consumer):
             train_id = msg["data"]["trainId"]
             LOGGER.info(f"Starting train {train_id}.")
             self.router.update_train_status(train_id, "running")
+            # TODO maybe remove this it will immediately try to move the train away from pht_incoming to the next station
+            self.router.process_train(train_id, "pht_incoming")
 
         # Stop the train
         elif msg["type"] == "stopTrain":
