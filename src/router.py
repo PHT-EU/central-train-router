@@ -141,18 +141,21 @@ class TrainRouter:
         """
 
         LOGGER.info("Syncing redis routes with vault storage")
+        try:
+            routes = self._get_all_routes_from_vault()
 
-        routes = self._get_all_routes_from_vault()
-
-        # Iterate over all routes and add them to redis if they dont exist
-        for train_id in routes:
-            # self.redis.delete(f"{train_id}-stations", f"{train_id}-type")
-            if not self.redis.exists(f"{train_id}-stations"):
-                LOGGER.debug(f"Adding train {train_id} to redis storage.")
-                self.get_route_data_from_vault(train_id)
-            else:
-                LOGGER.info(f"Route for train {train_id} already exists")
-        LOGGER.info("Synchronized redis")
+            # Iterate over all routes and add them to redis if they dont exist
+            for train_id in routes:
+                # self.redis.delete(f"{train_id}-stations", f"{train_id}-type")
+                if not self.redis.exists(f"{train_id}-stations"):
+                    LOGGER.debug(f"Adding train {train_id} to redis storage.")
+                    self.get_route_data_from_vault(train_id)
+                else:
+                    LOGGER.info(f"Route for train {train_id} already exists")
+            LOGGER.info("Synchronized redis")
+        except:
+            LOGGER.error(f"Error syncing with vault")
+            LOGGER.exception("Traceback")
 
     def _get_all_routes_from_vault(self) -> List[str]:
         """
@@ -163,6 +166,7 @@ class TrainRouter:
         url = f"{self.vault_url}/v1/kv-pht-routes/metadata"
 
         r = requests.get(url=url, params={"list": True}, headers=self.vault_headers)
+        r.raise_for_status()
         routes = r.json()["data"]["keys"]
 
         return routes
@@ -195,8 +199,8 @@ class TrainRouter:
         try:
             url = f"{self.vault_url}/v1/kv-pht-routes/data/{train_id}"
             r = requests.get(url, headers=self.vault_headers)
+            r.raise_for_status()
             route = r.json()["data"]["data"]
-            print(r.json())
             # Add the received route from redis
             self._add_route_to_redis(route)
 
