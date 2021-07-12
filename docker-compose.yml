@@ -4,14 +4,6 @@ services:
     build: .
     env_file:
       - .env
-#    environment:
-#      - VAULT_TOKEN=s.JZuSRBRHI625RVwi7YZW1AeL
-#      - VAULT_URL=http://vault:8200
-#      - HARBOR_API=https://harbor.lukaszimmermann.dev/api/v2.0
-#      - HARBOR_USER=graf
-#      - HARBOR_PW=Start123!
-#      - AMPQ_URL=amqp://admin:start123@rabbitmq:5672/
-#      - REDIS_HOST=redis
 
   redis:
       image: "redis:alpine"
