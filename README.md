@@ -29,3 +29,8 @@ The same message broker is used to communicate the train status with the user in
     ```
 2. Start the service by running `docker-compose up -d`
 
+
+
+### Credits
+[Icon](https://www.flaticon.com/authors/eucalyp)
+
