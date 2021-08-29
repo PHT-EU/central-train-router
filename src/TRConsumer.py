@@ -74,8 +74,8 @@ class TRConsumer(Consumer):
             train_id = msg["data"]["trainId"]
             LOGGER.info(f"Starting train {train_id}.")
             self.router.update_train_status(train_id, "running")
-            # TODO maybe remove this it will immediately try to move the train away from pht_incoming to the next station
             self.router.process_train(train_id, "pht_incoming")
+            self.publish_events_for_train(train_id=train_id, event_type="trainStarted")
 
         # Stop the train
         elif msg["type"] == "stopTrain":
@@ -85,6 +85,25 @@ class TRConsumer(Consumer):
 
         else:
             LOGGER.info(f"Invalid event {msg['type']}")
+
+    def publish_events_for_train(self, train_id: str, event_type: str, message_body: str = None, exchange: str = "pht",
+                                 exchange_type: str = "topic", routing_key: str = "ui.tr.events"):
+
+        message = {
+            "type": event_type,
+            "data": {
+                "trainId": train_id,
+                "message": message_body
+            }
+        }
+        connection = pika.BlockingConnection(pika.URLParameters(self.ampq_url))
+        channel = connection.channel()
+        channel.exchange_declare(exchange=exchange, exchange_type=exchange_type, durable=True)
+        json_message = json.dumps(message).encode("utf-8")
+
+        channel.basic_publish(exchange=exchange, routing_key=routing_key, body=json_message)
+        LOGGER.info(" [x] Sent %r" % json_message)
+        connection.close()
 
 
 def main():
