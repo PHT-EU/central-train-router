@@ -7,6 +7,7 @@ from dotenv import load_dotenv, find_dotenv
 import os
 import json
 import logging
+import pika
 
 LOGGER = logging.getLogger(__name__)
 
@@ -55,6 +56,7 @@ class TRConsumer(Consumer):
             if not msg["data"].get("operator", "system") == "system":
                 LOGGER.info(f"Moving train: {train_id}")
                 self.router.process_train(train_id, project)
+
             else:
                 LOGGER.info(f"System Operation detected -> ignoring push event")
 

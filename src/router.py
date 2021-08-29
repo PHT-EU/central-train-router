@@ -25,8 +25,6 @@ class TrainRouter:
         self.harbor_user = os.getenv("HARBOR_USER")
         self.harbor_pw = os.getenv("HARBOR_PW")
 
-        # TODO get the registered projects from somewhere
-        # self.pht_projects = ["1", "2", "3", "pht_incoming"]
         self.pht_projects = ["1", "pht_incoming"]
 
         # Configure redis instance if host is not available in env var use default localhost
@@ -71,7 +69,6 @@ class TrainRouter:
             if self._check_artifact_label(project_id, train_id):
                 self.process_train(train_id, project_id)
 
-
     def process_train(self, train_id: str, current_project: str):
         """
         Processes a train image tagged with the pht_next label according the route stored in redis
@@ -114,8 +111,6 @@ class TrainRouter:
         :return:
         """
         self.redis.set(f"{train_id}-status", status)
-
-
 
     def _clean_up_finished_train(self, train_id: str):
         """
@@ -189,6 +184,8 @@ class TrainRouter:
         self.redis.set(f"{train_id}-type", "periodic" if route["periodic"] else "linear")
         # TODO store the number of epochs somewhere/ also needs to be set when specifying periodic routes
 
+
+
     def get_route_data_from_vault(self, train_id: str):
         """
         Get the route data for the given train_id from the vault REST api
@@ -246,7 +243,6 @@ class TrainRouter:
         LOGGER.info(f"Removing pht_next label: {label_r.text}")
 
         if delete:
-
             delete_url = f"{self.harbor_api}/projects/{origin}/repositories/{train_id}"
             r_delete = requests.delete(delete_url, auth=self.harbor_auth, headers=self.harbor_headers)
             LOGGER.info(f"Deleting old artifacts \n {r_delete.text}")
@@ -267,4 +263,3 @@ class TrainRouter:
             return True
         else:
             return False
-
