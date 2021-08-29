@@ -13,8 +13,9 @@ LOGGER = logging.getLogger(__name__)
 
 
 class TRConsumer(Consumer):
-    def __init__(self, amqp_url: str, queue: str = "", routing_key: str = None):
-        super().__init__(amqp_url, queue, routing_key=routing_key)
+    def __init__(self, ampq_url: str, queue: str = "", routing_key: str = None):
+        super().__init__(ampq_url, queue, routing_key=routing_key)
+        self.ampq_url = ampq_url
 
         # Set auto reconnect to true
         self.router = TrainRouter()
