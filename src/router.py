@@ -74,7 +74,6 @@ class TrainRouter:
             if self._check_artifact_label(project_id, train_id):
                 self.process_train(train_id, project_id)
 
-
     def process_train(self, train_id: str, current_project: str):
         """
         Processes a train image tagged with the pht_next label according the route stored in redis
@@ -192,6 +191,8 @@ class TrainRouter:
         self.redis.set(f"{train_id}-type", "periodic" if route["periodic"] else "linear")
         # TODO store the number of epochs somewhere/ also needs to be set when specifying periodic routes
 
+
+
     def get_route_data_from_vault(self, train_id: str):
         """
         Get the route data for the given train_id from the vault REST api
@@ -200,7 +201,6 @@ class TrainRouter:
         :return:
         """
         try:
-
             url = f"{self.vault_url}/v1/kv-pht-routes/data/{train_id}"
             r = requests.get(url, headers=self.vault_headers)
             r.raise_for_status()
