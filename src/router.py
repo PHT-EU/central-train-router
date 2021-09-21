@@ -25,6 +25,9 @@ class TrainRouter:
         self.harbor_user = os.getenv("HARBOR_USER")
         self.harbor_pw = os.getenv("HARBOR_PW")
 
+        if self.vault_url[-1] == "/":
+            self.vault_url = self.vault_url[:-1]
+
         # TODO get the registered projects from somewhere
         # self.pht_projects = ["1", "2", "3", "pht_incoming"]
         self.pht_projects = ["1", "pht_incoming"]
@@ -197,6 +200,7 @@ class TrainRouter:
         :return:
         """
         try:
+
             url = f"{self.vault_url}/v1/kv-pht-routes/data/{train_id}"
             r = requests.get(url, headers=self.vault_headers)
             r.raise_for_status()
