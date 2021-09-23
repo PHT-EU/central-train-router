@@ -82,12 +82,15 @@ class TRConsumer(Consumer):
             train_id = msg["data"]["trainId"]
             LOGGER.info(f"Stopping train {train_id}.")
             self.router.update_train_status(train_id, "stopped")
+            self.publish_events_for_train(train_id=train_id, event_type="trainStopped")
 
         else:
+            train_id = msg["data"]["trainId"]
             LOGGER.info(f"Invalid event {msg['type']}")
+            self.publish_events_for_train(train_id=train_id, event_type="trainFailed")
 
     def publish_events_for_train(self, train_id: str, event_type: str, message_body: str = None, exchange: str = "pht",
-                                 exchange_type: str = "topic", routing_key: str = "ui.tr.events"):
+                                 exchange_type: str = "topic", routing_key: str = "ui.tr.event"):
 
         message = {
             "type": event_type,
@@ -108,7 +111,6 @@ class TRConsumer(Consumer):
 
 def main():
     load_dotenv(find_dotenv())
-    print(os.getenv("VAULT_URL"))
     logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
     tr_consumer = TRConsumer(os.getenv("AMPQ_URL"), "", routing_key="tr")
     tr_consumer.run()
