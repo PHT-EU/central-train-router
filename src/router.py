@@ -40,40 +40,6 @@ class TrainRouter:
         self.harbor_headers = {'accept': 'application/json', 'Content-Type': 'application/json'}
         self.harbor_auth = (self.harbor_user, self.harbor_pw)
 
-    def run(self):
-        scanning_thread = threading.Thread(target=self.update_trains)
-        scanning_thread.start()
-
-    def update_trains(self):
-        """
-        Periodically scan the registered harbor projects for images containing the pht_next label and process them
-        accordingly
-
-        :return:
-        """
-        while True:
-            for project in self.pht_projects:
-                print(f"Scanning project: {project}")
-                self.scan_harbor_project(project)
-
-            time.sleep(20)
-
-    def scan_harbor_project(self, project_id: str):
-        """
-        Scan a harbor projects listing all the repositories in the image
-
-        :param project_id: identifier of the project to scan
-        :return:
-        """
-        url = self.harbor_api + f"/projects/{project_id}/repositories"
-        r = requests.get(url, headers=self.harbor_headers, auth=self.harbor_auth)
-        repos = r.json()
-
-        for repo in repos:
-            train_id = repo["name"].split("/")[-1]
-            if self._check_artifact_label(project_id, train_id):
-                self.process_train(train_id, project_id)
-
     def process_train(self, train_id: str, current_project: str):
         """
         Processes a train image tagged with the pht_next label according the route stored in redis
@@ -103,7 +69,6 @@ class TrainRouter:
             else:
                 LOGGER.info(f"Train {train_id} is stopped. Ignoring push event")
 
-
         else:
             LOGGER.info(f"Image {train_id} not registered. Ignoring...")
 
@@ -116,8 +81,6 @@ class TrainRouter:
         :return:
         """
         self.redis.set(f"{train_id}-status", status)
-
-
 
     def _clean_up_finished_train(self, train_id: str):
         """
@@ -191,8 +154,6 @@ class TrainRouter:
         self.redis.set(f"{train_id}-type", "periodic" if route["periodic"] else "linear")
         # TODO store the number of epochs somewhere/ also needs to be set when specifying periodic routes
 
-
-
     def get_route_data_from_vault(self, train_id: str):
         """
         Get the route data for the given train_id from the vault REST api
@@ -250,7 +211,6 @@ class TrainRouter:
         LOGGER.info(f"Removing pht_next label: {label_r.text}")
 
         if delete:
-
             delete_url = f"{self.harbor_api}/projects/{origin}/repositories/{train_id}"
             r_delete = requests.delete(delete_url, auth=self.harbor_auth, headers=self.harbor_headers)
             LOGGER.info(f"Deleting old artifacts \n {r_delete.text}")
@@ -271,4 +231,3 @@ class TrainRouter:
             return True
         else:
             return False
-

@@ -51,6 +51,7 @@ class TRConsumer(Consumer):
 
         # If a train is pushed by a station or user process if using the stored routed
         if msg["type"] == "trainPushed":
+            # todo improve this
             project, train_id = msg["data"]["repositoryFullName"].split("/")
 
             # Ignore push events by system services (such as the TR itself)
