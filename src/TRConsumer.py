@@ -23,6 +23,8 @@ class TRConsumer(Consumer):
         # Configure routing key
         self.ROUTING_KEY = routing_key
         self.router.sync_routes_with_vault()
+        # determine auto start mode
+        self.auto_start = os.getenv("AUTO_START") == "true"
 
     def run(self):
         super().run()
@@ -69,14 +71,13 @@ class TRConsumer(Consumer):
             LOGGER.info(f"Adding route for new train {train_id}")
             self.router.get_route_data_from_vault(train_id)
 
+            if self.auto_start:
+                self.start_train(train_id)
+
         # Start the train by setting its status in redis
         elif msg["type"] == "startTrain":
-
             train_id = msg["data"]["trainId"]
-            LOGGER.info(f"Starting train {train_id}.")
-            self.router.update_train_status(train_id, "running")
-            self.router.process_train(train_id, "pht_incoming")
-            self.publish_events_for_train(train_id=train_id, event_type="trainStarted")
+            self.start_train(train_id)
 
         # Stop the train
         elif msg["type"] == "stopTrain":
@@ -108,6 +109,12 @@ class TRConsumer(Consumer):
         channel.basic_publish(exchange=exchange, routing_key=routing_key, body=json_message)
         LOGGER.info(" [x] Sent %r" % json_message)
         connection.close()
+
+    def start_train(self, train_id: str):
+        LOGGER.info(f"Starting train {train_id}.")
+        self.router.update_train_status(train_id, "running")
+        self.router.process_train(train_id, "pht_incoming")
+        self.publish_events_for_train(train_id=train_id, event_type="trainStarted")
 
 
 def main():

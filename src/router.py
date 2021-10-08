@@ -39,6 +39,7 @@ class TrainRouter:
         self.vault_headers = {"X-Vault-Token": self.vault_token}
         self.harbor_headers = {'accept': 'application/json', 'Content-Type': 'application/json'}
         self.harbor_auth = (self.harbor_user, self.harbor_pw)
+        self.auto_start = os.getenv("AUTO_START")
 
     def process_train(self, train_id: str, current_project: str):
         """
