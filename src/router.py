@@ -1,18 +1,24 @@
-from train_lib.clients import Consumer, PHTClient
-from train_lib.clients.rabbitmq import LOG_FORMAT
 import os
 import redis
-from dotenv import find_dotenv, load_dotenv
 import requests
 from typing import List
-from pprint import pprint
 import random
-import threading
-import time
 import logging
-import traceback
+from dataclasses import dataclass
+import hvac
 
 LOGGER = logging.getLogger(__name__)
+
+
+@dataclass
+class DemoStation:
+    id: int
+    airflow_api_url: str
+    username: str
+    password: str
+
+    def auth(self) -> tuple:
+        return self.username, self.password
 
 
 class TrainRouter:
@@ -35,7 +41,15 @@ class TrainRouter:
         self.vault_headers = {"X-Vault-Token": self.vault_token}
         self.harbor_headers = {'accept': 'application/json', 'Content-Type': 'application/json'}
         self.harbor_auth = (self.harbor_user, self.harbor_pw)
-        self.auto_start = os.getenv("AUTO_START")
+
+        self.vault_client = hvac.Client(url=self.vault_url, token=self.vault_token)
+
+        # class variables for running train router in demonstration mode
+        self.auto_start = os.getenv("AUTO_START") == "true"
+        self.demo_mode = os.getenv("DEMONSTRATION_MODE") == "true"
+        self.demo_stations = None
+        if self.demo_mode:
+            self._get_demo_stations()
 
     def process_train(self, train_id: str, current_project: str):
         """
@@ -51,12 +65,15 @@ class TrainRouter:
         # If the route exists move to next station project
 
         if route_type:
-
             if self.redis.get(f"{train_id}-status") == "running":
                 if self.redis.exists(f"{train_id}-route"):
                     next_station_id = self.redis.rpop(f"{train_id}-route")
                     LOGGER.info(f"Moving train {train_id} from {current_project} to station_{next_station_id}")
                     self._move_train(train_id, origin=current_project, dest=next_station_id)
+
+                    if self.demo_mode:
+                        self._start_train_for_station(train_id, next_station_id)
+
 
                 # otherwise move to pht_outgoing
                 else:
@@ -204,11 +221,6 @@ class TrainRouter:
         # Move latest image
         latest_r = requests.post(url=url, headers=self.harbor_headers, auth=self.harbor_auth, params=params_latest)
         LOGGER.info(f"latest:  {latest_r.text}")
-        # remove pht next label
-        label_url = f"{self.harbor_api}/projects/{dest}/repositories/{train_id}/artifacts/latest/labels/2"
-
-        label_r = requests.delete(label_url, headers=self.harbor_headers, auth=self.harbor_auth)
-        LOGGER.info(f"Removing pht_next label: {label_r.text}")
 
         if delete:
             delete_url = f"{self.harbor_api}/projects/{origin}/repositories/{train_id}"
@@ -231,3 +243,9 @@ class TrainRouter:
             return True
         else:
             return False
+
+    def _start_train_for_station(self, train_id: str, station_id: str):
+        pass
+
+    def _get_demo_stations(self):
+        pass
