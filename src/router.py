@@ -244,8 +244,15 @@ class TrainRouter:
         else:
             return False
 
-    def _start_train_for_station(self, train_id: str, station_id: str):
-        pass
+    def _start_train_for_station(self, train_id: str, station_id: str, airflow_config: dict = None):
+        repository = os.getenv("HARBOR_URL") + f"/station_{station_id}/{train_id}"
+        payload = {
+            "repository": repository,
+            "tag": "latest",
+        }
+
+        if airflow_config:
+            payload = {**payload, **airflow_config}
 
     def _get_demo_stations(self):
         pass
