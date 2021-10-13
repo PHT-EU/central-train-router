@@ -28,10 +28,6 @@ class TrainRouter:
         if self.vault_url[-1] == "/":
             self.vault_url = self.vault_url[:-1]
 
-        # TODO get the registered projects from somewhere
-        # self.pht_projects = ["1", "2", "3", "pht_incoming"]
-        self.pht_projects = ["1", "pht_incoming"]
-
         # Configure redis instance if host is not available in env var use default localhost
         self.redis = redis.Redis(host=os.getenv("REDIS_HOST", None), decode_responses=True)
 
@@ -147,10 +143,13 @@ class TrainRouter:
         train_id = route["repositorySuffix"]
         stations = route["harborProjects"]
         # Store the participating stations as well as the route type separately
-        self.redis.rpush(f"{train_id}-stations", *stations)
+        print(stations)
+
+        if stations:
+            self.redis.rpush(f"{train_id}-stations", *stations)
         # Shuffle the stations to create a randomized route
         random.shuffle(stations)
-        self.redis.rpush(f"{train_id}-status", "stopped")
+        self.redis.set(f"{train_id}-status", "stopped")
         self.redis.rpush(f"{train_id}-route", *stations)
         self.redis.set(f"{train_id}-type", "periodic" if route["periodic"] else "linear")
         # TODO store the number of epochs somewhere/ also needs to be set when specifying periodic routes
