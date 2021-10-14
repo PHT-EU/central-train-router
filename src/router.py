@@ -6,6 +6,7 @@ import random
 import logging
 from dataclasses import dataclass
 import hvac
+from dotenv import load_dotenv, find_dotenv
 
 LOGGER = logging.getLogger(__name__)
 
@@ -47,7 +48,7 @@ class TrainRouter:
         # class variables for running train router in demonstration mode
         self.auto_start = os.getenv("AUTO_START") == "true"
         self.demo_mode = os.getenv("DEMONSTRATION_MODE") == "true"
-        self.demo_stations = None
+        self.demo_stations = {}
         if self.demo_mode:
             self._get_demo_stations()
 
@@ -255,4 +256,22 @@ class TrainRouter:
             payload = {**payload, **airflow_config}
 
     def _get_demo_stations(self):
-        pass
+        url = f"{self.vault_url}/v1/demo-stations/metadata"
+
+        r = requests.get(url=url, params={"list": True}, headers=self.vault_headers)
+        r.raise_for_status()
+        demo_stations = r.json()["data"]["keys"]
+
+        for ds in demo_stations:
+            demo_station_data = self.vault_client.secrets.kv.v2.read_secret(
+                mount_point="demo-stations",
+                path=ds
+            )
+            demo_station = DemoStation(**demo_station_data["data"]["data"])
+
+            self.demo_stations[demo_station.id] = demo_station
+
+
+if __name__ == '__main__':
+    load_dotenv(find_dotenv())
+    router = TrainRouter()
