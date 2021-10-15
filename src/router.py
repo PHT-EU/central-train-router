@@ -1,18 +1,29 @@
-from train_lib.clients import Consumer, PHTClient
-from train_lib.clients.rabbitmq import LOG_FORMAT
 import os
 import redis
-from dotenv import find_dotenv, load_dotenv
 import requests
 from typing import List
-from pprint import pprint
 import random
-import threading
-import time
 import logging
-import traceback
+from dataclasses import dataclass
+import hvac
+from dotenv import load_dotenv, find_dotenv
+from requests import HTTPError
 
 LOGGER = logging.getLogger(__name__)
+
+
+@dataclass
+class DemoStation:
+    id: int
+    airflow_api_url: str
+    username: str
+    password: str
+
+    def auth(self) -> tuple:
+        return self.username, self.password
+
+    def api_endpoint(self) -> str:
+        return self.airflow_api_url + "/api/v1/"
 
 
 class TrainRouter:
@@ -28,10 +39,6 @@ class TrainRouter:
         if self.vault_url[-1] == "/":
             self.vault_url = self.vault_url[:-1]
 
-        # TODO get the registered projects from somewhere
-        # self.pht_projects = ["1", "2", "3", "pht_incoming"]
-        self.pht_projects = ["1", "pht_incoming"]
-
         # Configure redis instance if host is not available in env var use default localhost
         self.redis = redis.Redis(host=os.getenv("REDIS_HOST", None), decode_responses=True)
 
@@ -40,39 +47,15 @@ class TrainRouter:
         self.harbor_headers = {'accept': 'application/json', 'Content-Type': 'application/json'}
         self.harbor_auth = (self.harbor_user, self.harbor_pw)
 
-    def run(self):
-        scanning_thread = threading.Thread(target=self.update_trains)
-        scanning_thread.start()
+        self.vault_client = hvac.Client(url=self.vault_url, token=self.vault_token)
 
-    def update_trains(self):
-        """
-        Periodically scan the registered harbor projects for images containing the pht_next label and process them
-        accordingly
-
-        :return:
-        """
-        while True:
-            for project in self.pht_projects:
-                print(f"Scanning project: {project}")
-                self.scan_harbor_project(project)
-
-            time.sleep(20)
-
-    def scan_harbor_project(self, project_id: str):
-        """
-        Scan a harbor projects listing all the repositories in the image
-
-        :param project_id: identifier of the project to scan
-        :return:
-        """
-        url = self.harbor_api + f"/projects/{project_id}/repositories"
-        r = requests.get(url, headers=self.harbor_headers, auth=self.harbor_auth)
-        repos = r.json()
-
-        for repo in repos:
-            train_id = repo["name"].split("/")[-1]
-            if self._check_artifact_label(project_id, train_id):
-                self.process_train(train_id, project_id)
+        # class variables for running train router in demonstration mode
+        self.auto_start = os.getenv("AUTO_START") == "true"
+        self.demo_mode = os.getenv("DEMONSTRATION_MODE") == "true"
+        self.demo_stations = {}
+        if self.demo_mode:
+            LOGGER.info("Demonstration mode detected, attempting to load demo stations")
+            self._get_demo_stations()
 
     def process_train(self, train_id: str, current_project: str):
         """
@@ -88,12 +71,21 @@ class TrainRouter:
         # If the route exists move to next station project
 
         if route_type:
-
             if self.redis.get(f"{train_id}-status") == "running":
                 if self.redis.exists(f"{train_id}-route"):
                     next_station_id = self.redis.rpop(f"{train_id}-route")
                     LOGGER.info(f"Moving train {train_id} from {current_project} to station_{next_station_id}")
                     self._move_train(train_id, origin=current_project, dest=next_station_id)
+
+                    # if demo mode is enabled immediately trigger the execution of the train once it is moved
+                    if self.demo_mode:
+                        try:
+                            response = self.start_train_for_demo_station(train_id, next_station_id)
+                            LOGGER.info(f"Successfully started train {train_id} for station {next_station_id}")
+                            LOGGER.info(response)
+                        except HTTPError as e:
+                            LOGGER.error(f"Error starting train {train_id} for station {next_station_id}")
+                            LOGGER.error(e)
 
                 # otherwise move to pht_outgoing
                 else:
@@ -102,7 +94,6 @@ class TrainRouter:
                     self._clean_up_finished_train(train_id)
             else:
                 LOGGER.info(f"Train {train_id} is stopped. Ignoring push event")
-
 
         else:
             LOGGER.info(f"Image {train_id} not registered. Ignoring...")
@@ -116,8 +107,6 @@ class TrainRouter:
         :return:
         """
         self.redis.set(f"{train_id}-status", status)
-
-
 
     def _clean_up_finished_train(self, train_id: str):
         """
@@ -183,15 +172,16 @@ class TrainRouter:
         train_id = route["repositorySuffix"]
         stations = route["harborProjects"]
         # Store the participating stations as well as the route type separately
-        self.redis.rpush(f"{train_id}-stations", *stations)
+        print(stations)
+
+        if stations:
+            self.redis.rpush(f"{train_id}-stations", *stations)
         # Shuffle the stations to create a randomized route
         random.shuffle(stations)
-        self.redis.rpush(f"{train_id}-status", "stopped")
+        self.redis.set(f"{train_id}-status", "stopped")
         self.redis.rpush(f"{train_id}-route", *stations)
         self.redis.set(f"{train_id}-type", "periodic" if route["periodic"] else "linear")
         # TODO store the number of epochs somewhere/ also needs to be set when specifying periodic routes
-
-
 
     def get_route_data_from_vault(self, train_id: str):
         """
@@ -243,14 +233,8 @@ class TrainRouter:
         # Move latest image
         latest_r = requests.post(url=url, headers=self.harbor_headers, auth=self.harbor_auth, params=params_latest)
         LOGGER.info(f"latest:  {latest_r.text}")
-        # remove pht next label
-        label_url = f"{self.harbor_api}/projects/{dest}/repositories/{train_id}/artifacts/latest/labels/2"
-
-        label_r = requests.delete(label_url, headers=self.harbor_headers, auth=self.harbor_auth)
-        LOGGER.info(f"Removing pht_next label: {label_r.text}")
 
         if delete:
-
             delete_url = f"{self.harbor_api}/projects/{origin}/repositories/{train_id}"
             r_delete = requests.delete(delete_url, auth=self.harbor_auth, headers=self.harbor_headers)
             LOGGER.info(f"Deleting old artifacts \n {r_delete.text}")
@@ -272,3 +256,55 @@ class TrainRouter:
         else:
             return False
 
+    def start_train_for_demo_station(self, train_id: str, station_id: str, airflow_config: dict = None):
+        LOGGER.info(f"Starting train for demo station {station_id}")
+        repository = os.getenv("HARBOR_URL").split("//")[-1] + f"/station_{station_id}/{train_id}"
+
+        payload = {
+            "repository": repository,
+            "tag": "latest"
+        }
+        # todo enable the use of different data sets
+        volumes = {
+            f"/opt/stations/station_{station_id}/station_data/cord_input.csv": {
+                "bind": "/opt/pht_data/cord_input.csv",
+                "mode": "ro"
+            }
+        }
+        payload["volumes"] = volumes
+
+        if airflow_config:
+            payload = {**payload, **airflow_config}
+
+        body = {
+            "conf": payload
+        }
+        demo_station: DemoStation = self.demo_stations[station_id]
+
+        url = demo_station.api_endpoint() + "dags/run_pht_train/dagRuns"
+        r = requests.post(url=url, auth=demo_station.auth(), json=body)
+
+        r.raise_for_status()
+        return r.json()
+
+    def _get_demo_stations(self):
+        url = f"{self.vault_url}/v1/demo-stations/metadata"
+
+        r = requests.get(url=url, params={"list": True}, headers=self.vault_headers)
+        r.raise_for_status()
+        demo_stations = r.json()["data"]["keys"]
+
+        for ds in demo_stations:
+            demo_station_data = self.vault_client.secrets.kv.v2.read_secret(
+                mount_point="demo-stations",
+                path=ds
+            )
+            demo_station = DemoStation(**demo_station_data["data"]["data"])
+
+            self.demo_stations[demo_station.id] = demo_station
+
+
+if __name__ == '__main__':
+    load_dotenv(find_dotenv())
+    router = TrainRouter()
+    router.start_train_for_demo_station("hello", "1")
