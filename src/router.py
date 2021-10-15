@@ -21,6 +21,9 @@ class DemoStation:
     def auth(self) -> tuple:
         return self.username, self.password
 
+    def api_endpoint(self) -> str:
+        return self.airflow_api_url + "/api/v1/"
+
 
 class TrainRouter:
     def __init__(self):
@@ -72,9 +75,9 @@ class TrainRouter:
                     LOGGER.info(f"Moving train {train_id} from {current_project} to station_{next_station_id}")
                     self._move_train(train_id, origin=current_project, dest=next_station_id)
 
+                    # if demo mode is enabled immediately trigger the execution of the train once it is moved
                     if self.demo_mode:
-                        self._start_train_for_station(train_id, next_station_id)
-
+                        self.start_train_for_demo_station(train_id, next_station_id)
 
                 # otherwise move to pht_outgoing
                 else:
@@ -245,15 +248,35 @@ class TrainRouter:
         else:
             return False
 
-    def _start_train_for_station(self, train_id: str, station_id: str, airflow_config: dict = None):
+    def start_train_for_demo_station(self, train_id: str, station_id: str, airflow_config: dict = None):
         repository = os.getenv("HARBOR_URL") + f"/station_{station_id}/{train_id}"
+
         payload = {
             "repository": repository,
-            "tag": "latest",
+            "tag": "latest"
         }
+        # todo enable the use of different data sets
+        volumes = {
+            f"/opt/stations/station_{station_id}/station_data/cord_input.csv": {
+                "bind": "/opt/pht_data/cord_input.csv",
+                "mode": "ro"
+            }
+        }
+        payload["volumes"] = volumes
 
         if airflow_config:
             payload = {**payload, **airflow_config}
+
+        body = {
+            "conf": payload
+        }
+        demo_station: DemoStation = self.demo_stations[station_id]
+
+        url = demo_station.api_endpoint() + "dags/run_pht_train/dagRuns"
+        r = requests.post(url=url, auth=demo_station.auth(), json=body)
+
+        r.raise_for_status()
+        return r.json()
 
     def _get_demo_stations(self):
         url = f"{self.vault_url}/v1/demo-stations/metadata"
@@ -275,3 +298,4 @@ class TrainRouter:
 if __name__ == '__main__':
     load_dotenv(find_dotenv())
     router = TrainRouter()
+    router.start_train_for_demo_station("hello", "1")
