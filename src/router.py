@@ -53,6 +53,7 @@ class TrainRouter:
         self.demo_mode = os.getenv("DEMONSTRATION_MODE") == "true"
         self.demo_stations = {}
         if self.demo_mode:
+            LOGGER.info("Demonstration mode detected, attempting to load demo stations")
             self._get_demo_stations()
 
     def process_train(self, train_id: str, current_project: str):
@@ -249,7 +250,7 @@ class TrainRouter:
             return False
 
     def start_train_for_demo_station(self, train_id: str, station_id: str, airflow_config: dict = None):
-        repository = os.getenv("HARBOR_URL") + f"/station_{station_id}/{train_id}"
+        repository = os.getenv("HARBOR_URL").split("//")[-1] + f"/station_{station_id}/{train_id}"
 
         payload = {
             "repository": repository,
