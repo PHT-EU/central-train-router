@@ -7,6 +7,7 @@ import logging
 from dataclasses import dataclass
 import hvac
 from dotenv import load_dotenv, find_dotenv
+from requests import HTTPError
 
 LOGGER = logging.getLogger(__name__)
 
@@ -78,7 +79,13 @@ class TrainRouter:
 
                     # if demo mode is enabled immediately trigger the execution of the train once it is moved
                     if self.demo_mode:
-                        self.start_train_for_demo_station(train_id, next_station_id)
+                        try:
+                            response = self.start_train_for_demo_station(train_id, next_station_id)
+                            LOGGER.info(f"Successfully started train {train_id} for station {next_station_id}")
+                            LOGGER.info(response)
+                        except HTTPError as e:
+                            LOGGER.error(f"Error starting train {train_id} for station {next_station_id}")
+                            LOGGER.error(e)
 
                 # otherwise move to pht_outgoing
                 else:
@@ -250,6 +257,7 @@ class TrainRouter:
             return False
 
     def start_train_for_demo_station(self, train_id: str, station_id: str, airflow_config: dict = None):
+        LOGGER.info(f"Starting train for demo station {station_id}")
         repository = os.getenv("HARBOR_URL").split("//")[-1] + f"/station_{station_id}/{train_id}"
 
         payload = {
