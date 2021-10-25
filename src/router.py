@@ -181,6 +181,7 @@ class TrainRouter:
         self.redis.set(f"{train_id}-status", "stopped")
         self.redis.rpush(f"{train_id}-route", *stations)
         self.redis.set(f"{train_id}-type", "periodic" if route["periodic"] else "linear")
+
         # TODO store the number of epochs somewhere/ also needs to be set when specifying periodic routes
 
     def get_route_data_from_vault(self, train_id: str):
