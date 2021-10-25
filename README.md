@@ -1,3 +1,5 @@
+[![Build and push image](https://github.com/PHT-Medic/central-train-router/actions/workflows/CI.yml/badge.svg)](https://github.com/PHT-Medic/central-train-router/actions/workflows/CI.yml)
+[![CodeQL](https://github.com/PHT-Medic/central-train-router/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/PHT-Medic/central-train-router/actions/workflows/codeql-analysis.yml)
 # PHT Train Router
 Python Implementation of the PHT Train Router service for moving docker images (Trains)
 along the Route selected in the User Interface.  
