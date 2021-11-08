@@ -12,18 +12,6 @@ from requests import HTTPError
 LOGGER = logging.getLogger(__name__)
 
 
-@dataclass
-class DemoStation:
-    id: int
-    airflow_api_url: str
-    username: str
-    password: str
-
-    def auth(self) -> tuple:
-        return self.username, self.password
-
-    def api_endpoint(self) -> str:
-        return self.airflow_api_url + "/api/v1/"
 
 
 class TrainRouter:
@@ -90,7 +78,7 @@ class TrainRouter:
                 # otherwise move to pht_outgoing
                 else:
                     LOGGER.info(f"No more steps in the route moving {train_id} to pht_outgoing")
-                    self._move_train(train_id, origin=current_project, dest="pht_outgoing")
+                    self._move_train(train_id, origin=current_project, dest="pht_outgoing", outgoing=True)
                     self._clean_up_finished_train(train_id)
             else:
                 LOGGER.info(f"Train {train_id} is stopped. Ignoring push event")
@@ -208,7 +196,7 @@ class TrainRouter:
         r = requests.delete(url, headers=self.vault_headers)
         LOGGER.info(r.text)
 
-    def _move_train(self, train_id: str, origin: str, dest: str, delete=True):
+    def _move_train(self, train_id: str, origin: str, dest: str, delete=True, outgoing: bool = False):
         """
         Moves a train and its associated artifacts from the origin project to the destination project
 
@@ -228,8 +216,10 @@ class TrainRouter:
 
         # Move base image
         LOGGER.info("Moving images")
-        base_r = requests.post(url=url, headers=self.harbor_headers, auth=self.harbor_auth, params=params_base)
-        LOGGER.info(f"base:  {base_r.text}")
+
+        if not outgoing:
+            base_r = requests.post(url=url, headers=self.harbor_headers, auth=self.harbor_auth, params=params_base)
+            LOGGER.info(f"base:  {base_r.text}")
 
         # Move latest image
         latest_r = requests.post(url=url, headers=self.harbor_headers, auth=self.harbor_auth, params=params_latest)
@@ -303,6 +293,20 @@ class TrainRouter:
             demo_station = DemoStation(**demo_station_data["data"]["data"])
 
             self.demo_stations[demo_station.id] = demo_station
+
+
+@dataclass
+class DemoStation:
+    id: int
+    airflow_api_url: str
+    username: str
+    password: str
+
+    def auth(self) -> tuple:
+        return self.username, self.password
+
+    def api_endpoint(self) -> str:
+        return self.airflow_api_url + "/api/v1/"
 
 
 if __name__ == '__main__':
