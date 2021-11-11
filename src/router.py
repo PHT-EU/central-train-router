@@ -258,7 +258,7 @@ class TrainRouter:
         # todo enable the use of different data sets
         volumes = {
             f"/opt/stations/station_{station_id}/station_data/cord_input.csv": {
-                "bind": "/opt/pht_data/cord_input.csv",
+                "bind": "/opt/train_data/cord_input.csv",
                 "mode": "ro"
             }
         }
