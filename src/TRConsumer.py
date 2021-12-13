@@ -1,15 +1,26 @@
 from typing import Union
-
-from train_lib.clients import Consumer, PHTClient
-from train_lib.clients.rabbitmq import LOG_FORMAT
-from router import TrainRouter
 from dotenv import load_dotenv, find_dotenv
 import os
 import json
 import logging
 import pika
+from enum import Enum
+
+from router import TrainRouter
+from train_lib.clients import Consumer, PHTClient
+from train_lib.clients.rabbitmq import LOG_FORMAT
 
 LOGGER = logging.getLogger(__name__)
+
+
+class RouterEvents(Enum):
+    """
+    Enum for the events that can be sent to the router.
+    """
+    TRAIN_PUSHED = "trainPushed"
+    TRAIN_BUILT = "trainBuilt"
+    TRAIN_START = "startTrain"
+    TRAIN_STOP = "stopTrain"
 
 
 class TRConsumer(Consumer):
@@ -52,7 +63,7 @@ class TRConsumer(Consumer):
             msg = json.loads(msg)
 
         # If a train is pushed by a station or user process if using the stored routed
-        if msg["type"] == "trainPushed":
+        if msg["type"] == RouterEvents.TRAIN_PUSHED.value:
             # todo improve this
             project, train_id = msg["data"]["repositoryFullName"].split("/")
 
@@ -65,7 +76,7 @@ class TRConsumer(Consumer):
                 LOGGER.info(f"System Operation detected -> ignoring push event")
 
         # Perform the initial setup for a train (set up redis k/v pairs)
-        elif msg["type"] == "trainBuilt":
+        elif msg["type"] == RouterEvents.TRAIN_BUILT.value:
 
             train_id = msg["data"]["trainId"]
             LOGGER.info(f"Adding route for new train {train_id}")
@@ -75,12 +86,12 @@ class TRConsumer(Consumer):
                 self.start_train(train_id)
 
         # Start the train by setting its status in redis
-        elif msg["type"] == "startTrain":
+        elif msg["type"] == RouterEvents.TRAIN_START.value:
             train_id = msg["data"]["trainId"]
             self.start_train(train_id)
 
         # Stop the train
-        elif msg["type"] == "stopTrain":
+        elif msg["type"] == RouterEvents.TRAIN_STOP.value:
             train_id = msg["data"]["trainId"]
             LOGGER.info(f"Stopping train {train_id}.")
             self.router.update_train_status(train_id, "stopped")

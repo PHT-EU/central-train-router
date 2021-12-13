@@ -8,8 +8,10 @@ hvac = {extras = ["parser"], version = "*"}
 pika = "*"
 requests = "*"
 redis = "*"
+pht-train-container-library = "*"
 
 [dev-packages]
+python-dotenv = "*"
 
 [requires]
 python_version = "3.9"

@@ -12,8 +12,6 @@ from requests import HTTPError
 LOGGER = logging.getLogger(__name__)
 
 
-
-
 class TrainRouter:
     def __init__(self):
 
