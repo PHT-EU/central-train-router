@@ -23,6 +23,20 @@ class RouterEvents(Enum):
     TRAIN_STOP = "stopTrain"
 
 
+class RouterResponseEvents(Enum):
+    """
+    Enum for the responses that can be sent from the router.
+    """
+    STARTED = "trainStarted"
+    STOPPED = "trainStopped"
+    ERROR = "error"
+    FAILED = "trainFailed"
+
+
+
+# todo errors for functions
+
+
 class TRConsumer(Consumer):
     def __init__(self, ampq_url: str, queue: str = "", routing_key: str = None):
         super().__init__(ampq_url, queue, routing_key=routing_key)
