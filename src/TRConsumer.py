@@ -33,6 +33,10 @@ class RouterResponseEvents(Enum):
     FAILED = "trainFailed"
 
 
+class RouterErrorCodes(Enum):
+    TRAIN_NOT_FOUND = 0
+    TRAIN_ALREADY_STARTED = 1
+    TRAIN_NOT_STARTED = 2
 
 # todo errors for functions
 
@@ -119,11 +123,12 @@ class TRConsumer(Consumer):
     def publish_events_for_train(self, train_id: str, event_type: str, message_body: str = None, exchange: str = "pht",
                                  exchange_type: str = "topic", routing_key: str = "ui.tr.event"):
 
+        # todo add error codes
         message = {
             "type": event_type,
             "data": {
                 "trainId": train_id,
-                "message": message_body
+                "message": message_body,
             }
         }
         connection = pika.BlockingConnection(pika.URLParameters(self.ampq_url))
