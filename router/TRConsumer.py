@@ -13,10 +13,6 @@ from train_lib.clients.rabbitmq import LOG_FORMAT
 LOGGER = logging.getLogger(__name__)
 
 
-
-
-
-
 class TRConsumer(Consumer):
     def __init__(self, ampq_url: str, queue: str = "", routing_key: str = None):
         super().__init__(ampq_url, queue, routing_key=routing_key)
@@ -44,7 +40,6 @@ class TRConsumer(Consumer):
         self.process_message(message)
         super().on_message(_unused_channel, basic_deliver, properties, body)
 
-
     def process_message(self, msg: Union[dict, str]):
         """
         Filter the type and info from the received message from rabbit mq, and perform actions using the train router
@@ -56,7 +51,6 @@ class TRConsumer(Consumer):
 
         if isinstance(msg, str) or isinstance(msg, bytes):
             msg = json.loads(msg)
-
 
         # If a train is pushed by a station or user process if using the stored routed
         if msg["type"] == RouterEvents.TRAIN_PUSHED.value:

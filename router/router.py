@@ -3,7 +3,7 @@ import os
 from enum import Enum
 import redis
 import requests
-from typing import List
+from typing import List, Union
 import random
 import logging
 from dataclasses import dataclass
@@ -22,6 +22,7 @@ class RouterEvents(Enum):
     TRAIN_BUILT = "trainBuilt"
     TRAIN_START = "startTrain"
     TRAIN_STOP = "stopTrain"
+    TRAIN_STATUS = "trainStatus"
 
 
 class RouterResponseEvents(Enum):
@@ -30,14 +31,13 @@ class RouterResponseEvents(Enum):
     """
     STARTED = "trainStarted"
     STOPPED = "trainStopped"
-    ERROR = "error"
     FAILED = "trainFailed"
 
 
 class RouterErrorCodes(Enum):
     TRAIN_NOT_FOUND = 0
     TRAIN_ALREADY_STARTED = 1
-    TRAIN_NOT_STARTED = 2
+    TRAIN_ALREADY_STOPPED = 2
 
 
 @dataclass
@@ -66,7 +66,7 @@ class RouterResponse:
 @dataclass
 class RouterCommand:
     """
-    Class for parsing the commands that can be sent to the router from queue messages.
+    Class for parsing the commands that can be sent to the router in the message queue.
     """
     event_type: RouterEvents
     train_id: str
@@ -74,8 +74,11 @@ class RouterCommand:
     operator: str = None
 
     @classmethod
-    def from_message(cls, message: bytes) -> "RouterCommand":
-        message_dict = json.loads(message)
+    def from_message(cls, message: Union[bytes, str, dict]) -> "RouterCommand":
+        if isinstance(message, bytes) or isinstance(message, str):
+            message_dict = json.loads(message)
+        else:
+            message_dict = message
         event_type = message_dict["type"]
 
         if event_type == RouterEvents.TRAIN_PUSHED.value:
@@ -124,7 +127,7 @@ class TrainRouter:
             LOGGER.info("Demonstration mode detected, attempting to load demo stations")
             self._get_demo_stations()
 
-    def process_message(self, message: dict):
+    def process_command(self, command: RouterCommand) -> RouterResponse:
         pass
 
     def process_train(self, train_id: str, current_project: str):
