@@ -14,6 +14,16 @@ from requests import HTTPError
 LOGGER = logging.getLogger(__name__)
 
 
+class RouterEvents(Enum):
+    """
+    Enum for the events that can be sent to the router.
+    """
+    TRAIN_PUSHED = "trainPushed"
+    TRAIN_BUILT = "trainBuilt"
+    TRAIN_START = "startTrain"
+    TRAIN_STOP = "stopTrain"
+
+
 class RouterResponseEvents(Enum):
     """
     Enum for the responses that can be sent from the router.
@@ -51,6 +61,36 @@ class RouterResponse:
         }
 
         return json.dumps(message_dict).encode("utf-8")
+
+
+@dataclass
+class RouterCommand:
+    """
+    Class for parsing the commands that can be sent to the router from queue messages.
+    """
+    event_type: RouterEvents
+    train_id: str
+    project: str = None
+    operator: str = None
+
+    @classmethod
+    def from_message(cls, message: bytes) -> "RouterCommand":
+        message_dict = json.loads(message)
+        event_type = message_dict["type"]
+
+        if event_type == RouterEvents.TRAIN_PUSHED.value:
+            project, train_id = message_dict["data"]["repositoryFullName"].split("/")
+            return cls(
+                event_type=RouterEvents.TRAIN_PUSHED,
+                train_id=train_id,
+                project=project,
+                operator=message_dict["data"]["operator"],
+            )
+        else:
+            return cls(
+                train_id=message_dict["data"]["trainId"],
+                event_type=RouterEvents(message_dict["type"]),
+            )
 
 
 class TrainRouter:
