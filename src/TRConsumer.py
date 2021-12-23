@@ -7,7 +7,7 @@ import pika
 from enum import Enum
 
 from router import TrainRouter
-from train_lib.clients import Consumer, PHTClient
+from train_lib.clients import Consumer
 from train_lib.clients.rabbitmq import LOG_FORMAT
 
 LOGGER = logging.getLogger(__name__)
@@ -22,23 +22,6 @@ class RouterEvents(Enum):
     TRAIN_START = "startTrain"
     TRAIN_STOP = "stopTrain"
 
-
-class RouterResponseEvents(Enum):
-    """
-    Enum for the responses that can be sent from the router.
-    """
-    STARTED = "trainStarted"
-    STOPPED = "trainStopped"
-    ERROR = "error"
-    FAILED = "trainFailed"
-
-
-class RouterErrorCodes(Enum):
-    TRAIN_NOT_FOUND = 0
-    TRAIN_ALREADY_STARTED = 1
-    TRAIN_NOT_STARTED = 2
-
-# todo errors for functions
 
 
 class TRConsumer(Consumer):

@@ -1,4 +1,6 @@
+import json
 import os
+from enum import Enum
 import redis
 import requests
 from typing import List
@@ -10,6 +12,45 @@ from dotenv import load_dotenv, find_dotenv
 from requests import HTTPError
 
 LOGGER = logging.getLogger(__name__)
+
+
+class RouterResponseEvents(Enum):
+    """
+    Enum for the responses that can be sent from the router.
+    """
+    STARTED = "trainStarted"
+    STOPPED = "trainStopped"
+    ERROR = "error"
+    FAILED = "trainFailed"
+
+
+class RouterErrorCodes(Enum):
+    TRAIN_NOT_FOUND = 0
+    TRAIN_ALREADY_STARTED = 1
+    TRAIN_NOT_STARTED = 2
+
+
+@dataclass
+class RouterResponse:
+    """
+    Class for the responses that can be sent from the router.
+    """
+    event: RouterResponseEvents
+    train_id: str
+    message: str = None
+    error_code: RouterErrorCodes = None
+
+    def make_queue_message(self) -> bytes:
+        message_dict = {
+            "type": self.event.value,
+            "data": {
+                "trainId": self.train_id,
+                "message": self.message,
+                "errorCode": self.error_code.value if self.error_code else None,
+            }
+        }
+
+        return json.dumps(message_dict).encode("utf-8")
 
 
 class TrainRouter:
@@ -38,10 +79,13 @@ class TrainRouter:
         # class variables for running train router in demonstration mode
         self.auto_start = os.getenv("AUTO_START") == "true"
         self.demo_mode = os.getenv("DEMONSTRATION_MODE") == "true"
-        self.demo_stations = {}
         if self.demo_mode:
+            self.demo_stations = {}
             LOGGER.info("Demonstration mode detected, attempting to load demo stations")
             self._get_demo_stations()
+
+    def process_message(self, message: dict):
+        pass
 
     def process_train(self, train_id: str, current_project: str):
         """
