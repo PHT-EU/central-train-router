@@ -9,6 +9,7 @@ pika = "*"
 requests = "*"
 redis = "*"
 pht-train-container-library = "*"
+loguru = "*"
 
 [dev-packages]
 python-dotenv = "*"

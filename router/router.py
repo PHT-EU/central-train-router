@@ -2,13 +2,14 @@ import json
 import os
 import redis
 import requests
-from typing import List, Union
+from typing import List
 import random
 import logging
 from dataclasses import dataclass
 import hvac
 from dotenv import load_dotenv, find_dotenv
 from requests import HTTPError
+from loguru import logger
 
 from router.messages import RouterCommand, RouterResponse
 
@@ -16,34 +17,78 @@ LOGGER = logging.getLogger(__name__)
 
 
 class TrainRouter:
+    vault_url: str
+    vault_token: str
+    vault_client: hvac.Client
+    harbor_api_url: str
+    harbor_user: str
+    harbor_password: str
+    harbor_headers: dict
+    harbor_auth: tuple
+    redis_host: str
+    redis: redis.Redis
+    auto_start: bool = False
+    demo_mode: bool = False
+    demo_stations: dict = None
+
     def __init__(self):
+        # setup connections to external services
+        self.setup()
+        # sync redis with vault
+        self.sync_routes_with_vault()
 
-        # Get access variables for external services from environment variables
+    def setup(self):
+        """
+        Set up the connections to external services
+        """
+        logger.info("Setting up vault connection, with environment variables")
         self.vault_url = os.getenv("VAULT_URL")
+        if not self.vault_url:
+            raise ValueError("VAULT_URL not set in environment variables")
         self.vault_token = os.getenv("VAULT_TOKEN")
-        self.harbor_api = os.getenv("HARBOR_API")
-        self.harbor_user = os.getenv("HARBOR_USER")
-        self.harbor_pw = os.getenv("HARBOR_PW")
-
+        if not self.vault_token:
+            raise ValueError("VAULT_TOKEN not set in environment variables")
+        # remove trailing slash from vault url if present
         if self.vault_url[-1] == "/":
             self.vault_url = self.vault_url[:-1]
-
-        # Configure redis instance if host is not available in env var use default localhost
-        self.redis = redis.Redis(host=os.getenv("REDIS_HOST", None), decode_responses=True)
-
-        # Set up header and auth for services
-        self.vault_headers = {"X-Vault-Token": self.vault_token}
-        self.harbor_headers = {'accept': 'application/json', 'Content-Type': 'application/json'}
-        self.harbor_auth = (self.harbor_user, self.harbor_pw)
-
+        logger.info("Connecting to Vault - URL: {}", self.vault_url)
         self.vault_client = hvac.Client(url=self.vault_url, token=self.vault_token)
+        logger.info("Successfully connected to Vault")
+
+        logger.info("Setting up harbor connection, with environment variables")
+        self.harbor_api_url = os.getenv("HARBOR_API")
+        if not self.harbor_api_url:
+            raise ValueError("HARBOR_API not set in environment variables")
+        self.harbor_user = os.getenv("HARBOR_USER")
+        if not self.harbor_user:
+            raise ValueError("HARBOR_USER not set in environment variables")
+        self.harbor_password = os.getenv("HARBOR_PW")
+        if not self.harbor_password:
+            raise ValueError("HARBOR_PW not set in environment variables")
+        logger.info("Connecting to Harbor - URL: {}", self.harbor_api_url)
+        self.harbor_headers = {'accept': 'application/json', 'Content-Type': 'application/json'}
+        self.harbor_auth = (self.harbor_user, self.harbor_password)
+        try:
+            url = f"{self.harbor_api_url}/projects"
+            r = requests.get(url, headers=self.harbor_headers, auth=self.harbor_auth)
+            r.raise_for_status()
+        except HTTPError as e:
+            logger.error("Harbor connection failed with error: {}", e)
+        logger.info("Successfully connected to Harbor")
+
+        logger.info("Setting up redis connection, with environment variables")
+        self.redis_host = os.getenv("REDIS_HOST")
+        if not self.redis_host:
+            raise ValueError("REDIS_HOST not set in environment variables")
+        self.redis = redis.Redis(host=self.redis_host, decode_responses=True)
+        logger.info("Successfully connected to Redis")
 
         # class variables for running train router in demonstration mode
         self.auto_start = os.getenv("AUTO_START") == "true"
         self.demo_mode = os.getenv("DEMONSTRATION_MODE") == "true"
         if self.demo_mode:
             self.demo_stations = {}
-            LOGGER.info("Demonstration mode detected, attempting to load demo stations")
+            logger.info("Demonstration mode detected, attempting to load demo stations")
             self._get_demo_stations()
 
     def process_command(self, command: RouterCommand) -> RouterResponse:
@@ -207,7 +252,7 @@ class TrainRouter:
         :param train_id: identifier of the train
         :param origin: project identifier of the project the image currently resides in
         :param dest: project to move the image to
-        :param delete: boolean controlling wether to delete the image or not
+        :param delete: boolean controlling whether to delete the image or not
         :return:
         """
 
