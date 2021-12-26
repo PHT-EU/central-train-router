@@ -1,3 +1,5 @@
+import os
+
 import pytest
 from dotenv import load_dotenv, find_dotenv
 from unittest import mock
@@ -15,7 +17,7 @@ def router():
 
 
 def test_router_init():
-    with mock.patch.dict('os.environ', {'TRAIN_API_KEY': '12345'}):
+    with mock.patch.dict(os.environ, {'TRAIN_API_KEY': '12345'}):
         router = TrainRouter()
 
         assert router.api_key == '12345'

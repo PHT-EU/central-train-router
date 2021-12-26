@@ -1,7 +1,8 @@
 import json
-
 import pytest
-from router.router import RouterEvents, RouterResponseEvents, RouterErrorCodes, RouterCommand
+
+from router.messages import RouterCommand, RouterResponse
+from router.events import RouterEvents, RouterResponseEvents, RouterErrorCodes
 
 
 @pytest.fixture

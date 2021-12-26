@@ -1,6 +1,5 @@
 import json
 import os
-from enum import Enum
 import redis
 import requests
 from typing import List, Union
@@ -11,89 +10,9 @@ import hvac
 from dotenv import load_dotenv, find_dotenv
 from requests import HTTPError
 
+from router.messages import RouterCommand, RouterResponse
+
 LOGGER = logging.getLogger(__name__)
-
-
-class RouterEvents(Enum):
-    """
-    Enum for the events that can be sent to the router.
-    """
-    TRAIN_PUSHED = "trainPushed"
-    TRAIN_BUILT = "trainBuilt"
-    TRAIN_START = "startTrain"
-    TRAIN_STOP = "stopTrain"
-    TRAIN_STATUS = "trainStatus"
-
-
-class RouterResponseEvents(Enum):
-    """
-    Enum for the responses that can be sent from the router.
-    """
-    STARTED = "trainStarted"
-    STOPPED = "trainStopped"
-    FAILED = "trainFailed"
-
-
-class RouterErrorCodes(Enum):
-    TRAIN_NOT_FOUND = 0
-    TRAIN_ALREADY_STARTED = 1
-    TRAIN_ALREADY_STOPPED = 2
-
-
-@dataclass
-class RouterResponse:
-    """
-    Class for the responses that can be sent from the router.
-    """
-    event: RouterResponseEvents
-    train_id: str
-    message: str = None
-    error_code: RouterErrorCodes = None
-
-    def make_queue_message(self) -> bytes:
-        message_dict = {
-            "type": self.event.value,
-            "data": {
-                "trainId": self.train_id,
-                "message": self.message,
-                "errorCode": self.error_code.value if self.error_code else None,
-            }
-        }
-
-        return json.dumps(message_dict).encode("utf-8")
-
-
-@dataclass
-class RouterCommand:
-    """
-    Class for parsing the commands that can be sent to the router in the message queue.
-    """
-    event_type: RouterEvents
-    train_id: str
-    project: str = None
-    operator: str = None
-
-    @classmethod
-    def from_message(cls, message: Union[bytes, str, dict]) -> "RouterCommand":
-        if isinstance(message, bytes) or isinstance(message, str):
-            message_dict = json.loads(message)
-        else:
-            message_dict = message
-        event_type = message_dict["type"]
-
-        if event_type == RouterEvents.TRAIN_PUSHED.value:
-            project, train_id = message_dict["data"]["repositoryFullName"].split("/")
-            return cls(
-                event_type=RouterEvents.TRAIN_PUSHED,
-                train_id=train_id,
-                project=project,
-                operator=message_dict["data"]["operator"],
-            )
-        else:
-            return cls(
-                train_id=message_dict["data"]["trainId"],
-                event_type=RouterEvents(message_dict["type"]),
-            )
 
 
 class TrainRouter:
