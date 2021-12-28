@@ -5,7 +5,7 @@ from dotenv import load_dotenv, find_dotenv
 from unittest import mock
 
 
-from router.router import TrainRouter
+from router.train_router import TrainRouter
 
 
 @pytest.fixture
@@ -19,4 +19,27 @@ def router():
 def test_router_init():
     load_dotenv(find_dotenv())
     router = TrainRouter()
+
+    with mock.patch.dict(os.environ, {'VAULT_URL': ''}):
+        with pytest.raises(ValueError):
+            router = TrainRouter()
+
+    with mock.patch.dict(os.environ, {'VAULT_TOKEN': ''}):
+        with pytest.raises(ValueError):
+            router = TrainRouter()
+
+    with mock.patch.dict(os.environ, {'HARBOR_API': ''}):
+        with pytest.raises(ValueError):
+            router = TrainRouter()
+
+    with mock.patch.dict(os.environ, {'HARBOR_USER': ''}):
+        with pytest.raises(ValueError):
+            router = TrainRouter()
+
+    with mock.patch.dict(os.environ, {'HARBOR_PW': ''}):
+        with pytest.raises(ValueError):
+            router = TrainRouter()
+    with mock.patch.dict(os.environ, {'REDIS_HOST': ''}):
+        with pytest.raises(ValueError):
+            router = TrainRouter()
 

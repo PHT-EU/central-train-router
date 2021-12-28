@@ -74,6 +74,7 @@ class TrainRouter:
             r.raise_for_status()
         except HTTPError as e:
             logger.error("Harbor connection failed with error: {}", e)
+            raise e
         logger.info("Successfully connected to Harbor")
 
         logger.info("Setting up redis connection, with environment variables")

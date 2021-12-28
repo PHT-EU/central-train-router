@@ -6,7 +6,7 @@ import logging
 import pika
 from enum import Enum
 
-from router import TrainRouter
+from router.router import TrainRouter
 from train_lib.clients import Consumer
 from train_lib.clients.rabbitmq import LOG_FORMAT
 
