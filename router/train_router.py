@@ -101,7 +101,6 @@ class TrainRouter:
 
         if command.event_type == RouterEvents.TRAIN_BUILT:
             self._initialize_train(command.train_id)
-
         elif command.event_type == RouterEvents.TRAIN_START:
             pass
 
@@ -128,7 +127,7 @@ class TrainRouter:
             mount_point=self.vault_route_engine
         )
         route = VaultRoute(**vault_data["data"]["data"])
-        print(route)
+        self.redis_store.register_train(route)
 
     def process_train(self, train_id: str, current_project: str):
         """
