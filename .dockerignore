@@ -1,0 +1,3 @@
+.github/
+*.pytest.cache/
+docker_compose.yml

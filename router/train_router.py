@@ -7,11 +7,12 @@ import random
 import logging
 from dataclasses import dataclass
 import hvac
-from dotenv import load_dotenv, find_dotenv
 from requests import HTTPError
 from loguru import logger
 
 from router.messages import RouterCommand, RouterResponse
+from router.events import RouterEvents, RouterResponseEvents, RouterErrorCodes
+from router.train_store import RouterRedisStore, VaultRoute, DemoStation
 
 LOGGER = logging.getLogger(__name__)
 
@@ -20,6 +21,7 @@ class TrainRouter:
     vault_url: str
     vault_token: str
     vault_client: hvac.Client
+    vault_route_engine: str = "kv-pht-routes"
     harbor_api_url: str
     harbor_user: str
     harbor_password: str
@@ -27,6 +29,7 @@ class TrainRouter:
     harbor_auth: tuple
     redis_host: str
     redis: redis.Redis
+    redis_store: RouterRedisStore
     auto_start: bool = False
     demo_mode: bool = False
     demo_stations: dict = None
@@ -71,6 +74,7 @@ class TrainRouter:
         try:
             url = f"{self.harbor_api_url}/projects"
             r = requests.get(url, headers=self.harbor_headers, auth=self.harbor_auth)
+            print(r.json())
             r.raise_for_status()
         except HTTPError as e:
             logger.error("Harbor connection failed with error: {}", e)
@@ -82,6 +86,7 @@ class TrainRouter:
         if not self.redis_host:
             raise ValueError("REDIS_HOST not set in environment variables")
         self.redis = redis.Redis(host=self.redis_host, decode_responses=True)
+        self.redis_store = RouterRedisStore(self.redis)
         logger.info("Successfully connected to Redis")
 
         # class variables for running train router in demonstration mode
@@ -93,7 +98,37 @@ class TrainRouter:
             self._get_demo_stations()
 
     def process_command(self, command: RouterCommand) -> RouterResponse:
-        pass
+
+        if command.event_type == RouterEvents.TRAIN_BUILT:
+            self._initialize_train(command.train_id)
+
+        elif command.event_type == RouterEvents.TRAIN_START:
+            pass
+
+        elif command.event_type == RouterEvents.TRAIN_STOP:
+            pass
+
+        elif command.event_type == RouterEvents.TRAIN_PUSHED:
+            pass
+
+        elif command.event_type == RouterEvents.TRAIN_STATUS:
+            pass
+
+        else:
+            raise ValueError(f"Unknown event type: {command.event_type}")
+
+    def _initialize_train(self, train_id: str) -> None:
+        """
+        Get route from vault and initialize train in redis
+        :param train_id:
+        :return:
+        """
+        vault_data = self.vault_client.secrets.kv.v2.read_secret_version(
+            path=train_id,
+            mount_point=self.vault_route_engine
+        )
+        route = VaultRoute(**vault_data["data"]["data"])
+        print(route)
 
     def process_train(self, train_id: str, current_project: str):
         """
@@ -343,23 +378,3 @@ class TrainRouter:
             demo_station = DemoStation(**demo_station_data["data"]["data"])
 
             self.demo_stations[demo_station.id] = demo_station
-
-
-@dataclass
-class DemoStation:
-    id: int
-    airflow_api_url: str
-    username: str
-    password: str
-
-    def auth(self) -> tuple:
-        return self.username, self.password
-
-    def api_endpoint(self) -> str:
-        return self.airflow_api_url + "/api/v1/"
-
-
-if __name__ == '__main__':
-    load_dotenv(find_dotenv())
-    router = TrainRouter()
-    router.start_train_for_demo_station("hello", "1")

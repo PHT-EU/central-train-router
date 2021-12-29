@@ -1,8 +1,0 @@
-{
-  "type": "PUSH_ARTIFACT",
-  "data": {
-    "repositoryFullName": "1/4ccbcf17-54d1-4cab-adb1-6c730808f0d6"
-  }
-}
-
-{"type": "trainPushed", "data": {"repositoryFullName": "pht_incoming/16079b3f-04de-411a-a917-f3215d59b246", "operator": "test"}}

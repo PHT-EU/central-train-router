@@ -1,5 +1,0 @@
-hvac[parser]
-pika
-requests
-redis
-git+https://github.com/PHT-Medic/train-container-library.git

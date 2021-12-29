@@ -4,9 +4,8 @@ import os
 import json
 import logging
 import pika
-from enum import Enum
 
-from router.router import TrainRouter
+from router.train_router import TrainRouter
 from train_lib.clients import Consumer
 from train_lib.clients.rabbitmq import LOG_FORMAT
 
@@ -34,7 +33,7 @@ class TRConsumer(Consumer):
         try:
             message = json.loads(body)
             # print(json.dumps(message, indent=2))
-        except:
+        except json.JSONDecodeError:
             LOGGER.error("Malformed json input")
             super().on_message(_unused_channel, basic_deliver, properties, body)
         self.process_message(message)
