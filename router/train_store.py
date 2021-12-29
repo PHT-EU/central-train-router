@@ -53,3 +53,9 @@ class RouterRedisStore:
             self.redis_client.set(f"{train_id}-epochs", vault_route.epochs)
 
         self.redis_client.set(f"{train_id}-status", TrainStatus.INITIALIZED.value)
+
+    def set_train_status(self, train_id: str, status: TrainStatus):
+        self.redis_client.set(f"{train_id}-status", status.value)
+
+    def get_train_status(self, train_id: str) -> TrainStatus:
+        return TrainStatus(self.redis_client.get(f"{train_id}-status"))
