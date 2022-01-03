@@ -13,6 +13,7 @@ class TrainStatus(Enum):
     STARTED = "started"
     RUNNING = "running"
     STOPPED = "stopped"
+    COMPLETED = "completed"
 
 
 class RouteTypes(Enum):
@@ -83,7 +84,7 @@ class RouterRedisStore:
     def get_current_station(self, train_id: str) -> str:
         return self.redis_client.get(f"{train_id}-current-station")
 
-    def get_next_station_on_route(self, train_id: str) -> Union[str, None]:
+    def get_next_station_on_route(self, train_id: str) -> str:
         next_station = self.redis_client.lpop(f"{train_id}-route")
         if next_station:
             logger.info(f"Next station on route: {next_station}")
@@ -93,7 +94,7 @@ class RouterRedisStore:
             # linear stop at last station
             if route_type == RouteTypes.LINEAR.value:
                 logger.info(f"Train {train_id} has completed its route")
-                return None
+                return CentralStations.OUTGOING.value
             # for periodic train check the selected epochs
             elif route_type == RouteTypes.PERIODIC.value:
                 round = int(self.redis_client.get(f"{train_id}-epoch"))
@@ -101,7 +102,7 @@ class RouterRedisStore:
                 # all rounds are finished return none
                 if round == int(self.redis_client.get(f"{train_id}-epochs")):
                     logger.info(f"Train {train_id} has completed all rounds")
-                    return None
+                    return CentralStations.OUTGOING.value
                 # increment epoch and re-register the route and return the next station
                 else:
                     logger.info(

@@ -10,7 +10,7 @@ from loguru import logger
 
 from router.messages import RouterCommand, RouterResponse
 from router.events import RouterEvents, RouterResponseEvents, RouterErrorCodes
-from router.train_store import RouterRedisStore, VaultRoute, DemoStation, TrainStatus
+from router.train_store import RouterRedisStore, VaultRoute, DemoStation, TrainStatus, CentralStations
 
 LOGGER = logging.getLogger(__name__)
 
@@ -104,23 +104,28 @@ class TrainRouter:
         """
 
         if command.event_type == RouterEvents.TRAIN_BUILT:
-            self._initialize_train(command.train_id)
+            response = self._initialize_train(command.train_id)
+
         elif command.event_type == RouterEvents.TRAIN_START:
             response = self._start_train(command.train_id)
+
         elif command.event_type == RouterEvents.TRAIN_STOP:
-            pass
+            response = self._stop_train(command.train_id)
 
         elif command.event_type == RouterEvents.TRAIN_PUSHED:
-            pass
+            response = self._route_train(command.train_id)
 
         elif command.event_type == RouterEvents.TRAIN_STATUS:
             response = self._read_train_status(command.train_id)
+
         else:
-            raise ValueError(f"Unknown event type: {command.event_type}")
+            logger.error("Unrecognized event type: {}", command.event_type)
+            response = RouterResponse(RouterResponseEvents.FAILED, train_id=command.train_id,
+                                      message="Unrecognized event type")
 
         return response
 
-    def _initialize_train(self, train_id: str) -> None:
+    def _initialize_train(self, train_id: str) -> RouterResponse:
         """
         Get route from vault and initialize train in redis
         :param train_id:
@@ -142,6 +147,11 @@ class TrainRouter:
         logger.info("Initializing train in redis...")
         self.redis_store.register_train(route)
         logger.info("Success")
+        return RouterResponse(
+            event=RouterResponseEvents.BUILT,
+            train_id=train_id,
+            message="Successfully initialized train"
+        )
 
     def _start_train(self, train_id: str) -> RouterResponse:
         """
@@ -258,6 +268,44 @@ class TrainRouter:
             event=RouterResponseEvents.STATUS,
             train_id=train_id,
             message=status.value
+        )
+
+    def _route_train(self, train_id: str) -> RouterResponse:
+        """
+        Processes push events from the registry to route a running train between stations
+
+        :param train_id:
+        :return:
+        """
+        current_station = self.redis_store.get_current_station(train_id)
+        next_station = self.redis_store.get_next_station_on_route(train_id)
+
+        status = self.redis_store.get_train_status(train_id)
+        if status == TrainStatus.INITIALIZED or status == TrainStatus.STOPPED or status == TrainStatus.COMPLETED:
+            return RouterResponse(
+                event=RouterResponseEvents.FAILED,
+                train_id=train_id,
+                message="Train is not running",
+                error_code=RouterErrorCodes.TRAIN_NOT_RUNNING
+            )
+
+        # move finished train to outgoing repository
+        if next_station == CentralStations.OUTGOING.value:
+            logger.info("Train {} finished it's router moving to outgoing", train_id)
+            self._move_train(train_id=train_id, origin=current_station, dest=next_station)
+            self.redis_store.set_train_status(train_id, TrainStatus.COMPLETED)
+            # todo cleanup train storage when finished?
+            return RouterResponse(
+                event=RouterResponseEvents.COMPLETED,
+                train_id=train_id,
+                message="Train completed successfully"
+            )
+        logger.info("Train {} moving from station {} to next station {}", train_id, current_station, next_station)
+        self._move_train(train_id=train_id, origin=current_station, dest=next_station)
+        return RouterResponse(
+            event=RouterResponseEvents.MOVED,
+            train_id=train_id,
+            message=f"Origin: {current_station} - Destination: {next_station}"
         )
 
     def process_train(self, train_id: str, current_project: str):
