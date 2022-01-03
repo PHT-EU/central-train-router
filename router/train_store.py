@@ -97,18 +97,18 @@ class RouterRedisStore:
                 return CentralStations.OUTGOING.value
             # for periodic train check the selected epochs
             elif route_type == RouteTypes.PERIODIC.value:
-                round = int(self.redis_client.get(f"{train_id}-epoch"))
-                logger.info(f"Train {train_id} has completed round {round}")
+                current_round = int(self.redis_client.get(f"{train_id}-epoch"))
+                logger.info(f"Train {train_id} has completed round {current_round}")
                 # all rounds are finished return none
-                if round == int(self.redis_client.get(f"{train_id}-epochs")):
+                if current_round == int(self.redis_client.get(f"{train_id}-epochs")):
                     logger.info(f"Train {train_id} has completed all rounds")
                     return CentralStations.OUTGOING.value
                 # increment epoch and re-register the route and return the next station
                 else:
                     logger.info(
-                        f"Train {train_id} has completed round {round},"
-                        f" moving to round {round + 1}/{self.redis_client.get(f'{train_id}-epochs')}")
-                    self.redis_client.set(f"{train_id}-epoch", round + 1)
+                        f"Train {train_id} has completed round {current_round},"
+                        f" moving to round {current_round + 1}/{self.redis_client.get(f'{train_id}-epochs')}")
+                    self.redis_client.set(f"{train_id}-epoch", current_round + 1)
                     self.redis_client.rpush(f"{train_id}-route",
                                             *self.redis_client.lrange(f"{train_id}-stations", 0, -1))
                     return self.redis_client.lpop(f"{train_id}-route")

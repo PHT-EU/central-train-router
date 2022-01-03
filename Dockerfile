@@ -8,14 +8,15 @@ RUN apt -y update && apt-get -y install software-properties-common && \
     pip install pipenv==2021.5.29 && \
     rm -rf /var/lib/apt/lists
 
-WORKDIR /opt/train-router/
+WORKDIR /opt/router/
 
-COPY Pipfile /opt/train-router/Pipfile
-COPY Pipfile.lock /opt/train-router/Pipfile.lock
+COPY Pipfile /opt/router/Pipfile
+COPY Pipfile.lock /opt/router/Pipfile.lock
 
 RUN pipenv install --system --deploy --ignore-pipfile
-RUN pip install git+https://github.com/PHT-Medic/train-container-library.git
 
-COPY router /opt/train-router/router
+COPY . /opt/router
 
-CMD ["python", "-u", "/opt/train-router/router/TRConsumer.py"]
+COPY ./entrypoint.sh /
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["test"]

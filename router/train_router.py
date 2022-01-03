@@ -19,6 +19,7 @@ class TrainRouter:
     vault_url: str
     vault_token: str
     vault_client: hvac.Client
+    vault_headers: dict
     vault_route_engine: str = "kv-pht-routes"
     harbor_api_url: str
     harbor_user: str
@@ -53,6 +54,7 @@ class TrainRouter:
         if self.vault_url[-1] == "/":
             self.vault_url = self.vault_url[:-1]
         logger.info("Connecting to Vault - URL: {}", self.vault_url)
+        self.vault_headers = {"X-Vault-Token": self.vault_token}
         self.vault_client = hvac.Client(url=self.vault_url, token=self.vault_token)
         logger.info("Successfully connected to Vault")
 
@@ -291,14 +293,19 @@ class TrainRouter:
 
         # move finished train to outgoing repository
         if next_station == CentralStations.OUTGOING.value:
-            logger.info("Train {} finished it's router moving to pht_outgoing", train_id)
+            logger.info("Train {} finished it's route -> moving to pht_outgoing", train_id)
             self._move_train(train_id=train_id, origin=current_station, dest=next_station)
             self.redis_store.set_train_status(train_id, TrainStatus.COMPLETED)
+            logger.info(f"Removing train {train_id} from vault storage...")
+            self._remove_route_from_vault(train_id)
+            logger.info(f"Train {train_id} successfully removed from vault storage")
             return RouterResponse(
                 event=RouterResponseEvents.COMPLETED,
                 train_id=train_id,
                 message="Train completed successfully"
             )
+
+        # move train to next station
         logger.info("Train {} moving from station {} to next station {}", train_id, current_station, next_station)
         self._move_train(train_id=train_id, origin=current_station, dest=next_station)
         return RouterResponse(

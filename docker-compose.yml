@@ -1,9 +1,12 @@
 version: '3.8'
 services:
-  train_router:
+  train-router:
     build: .
     env_file:
       - .env
+    environment:
+      - REDIS_HOST=redis
+    command: /entrypoint.sh test
   redis:
       image: "redis:alpine"
       ports:

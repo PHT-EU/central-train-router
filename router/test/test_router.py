@@ -7,7 +7,7 @@ from unittest import mock
 from hvac import Client
 import redis
 
-from router import TrainRouter
+from router.train_router import TrainRouter
 from router.events import RouterErrorCodes, RouterResponseEvents, RouterEvents
 from router.messages import RouterCommand
 from router.train_store import VaultRoute
