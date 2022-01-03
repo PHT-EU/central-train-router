@@ -2,6 +2,7 @@ version: '3.8'
 services:
   train-router:
     build: .
+    container_name: test-train-router
     env_file:
       - .env
     environment:

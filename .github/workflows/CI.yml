@@ -22,8 +22,27 @@ env:
 jobs:
   # Push image to GitHub Packages.
   # See also https://docs.docker.com/docker-hub/builds/
+
+  test-and-codecov:
+    runs-on: [ self-hosted, linux, x64, docker ]
+    steps:
+      - uses: actions/checkout@v2
+      - name: Run container tests
+        run: |
+          docker-compose up -d --build train-router redis
+          docker wait test-train-router
+      - uses: codecov/codecov-action@v2
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
+          files: ./coverage/coverage.xml # optional
+          name: codecov-umbrella # optional
+          fail_ci_if_error: true # optional (default = false)
+          verbose: true # optional (default = false)
+
+
+
   build-and-push-image:
-    runs-on: [self-hosted, linux, x64, docker]
+    runs-on: [ self-hosted, linux, x64, docker ]
     permissions:
       packages: write
       contents: read
