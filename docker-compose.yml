@@ -7,6 +7,9 @@ services:
     environment:
       - REDIS_HOST=redis
     command: /entrypoint.sh test
+    volumes:
+      - ./coverage:/opt/coverage
+
   redis:
       image: "redis:alpine"
       ports:

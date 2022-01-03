@@ -19,4 +19,4 @@ COPY . /opt/router
 
 COPY ./entrypoint.sh /
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["test"]
+CMD ["run"]
