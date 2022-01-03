@@ -112,3 +112,14 @@ class RouterRedisStore:
                     self.redis_client.rpush(f"{train_id}-route",
                                             *self.redis_client.lrange(f"{train_id}-stations", 0, -1))
                     return self.redis_client.lpop(f"{train_id}-route")
+
+    def remove_train_from_store(self, train_id: str):
+        logger.info(f"Removing train {train_id} from store...")
+        self.redis_client.delete(f"{train_id}-stations")
+        self.redis_client.delete(f"{train_id}-route")
+        self.redis_client.delete(f"{train_id}-type")
+        self.redis_client.delete(f"{train_id}-epochs")
+        self.redis_client.delete(f"{train_id}-epoch")
+        self.redis_client.delete(f"{train_id}-status")
+        logger.info("Success")
+

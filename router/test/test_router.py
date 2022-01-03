@@ -8,7 +8,8 @@ from hvac import Client
 import redis
 
 from router import TrainRouter
-from router.events import RouterErrorCodes
+from router.events import RouterErrorCodes, RouterResponseEvents, RouterEvents
+from router.messages import RouterCommand
 from router.train_store import VaultRoute
 import pika
 
@@ -134,4 +135,93 @@ def test_router_start_train(router, vault_client, redis_client):
 
     print(redis_client.get(f"{test_id}-status"))
     # registered train should succeed
-    router._start_train(train_id=test_id)
+    response = router._start_train(train_id=test_id)
+    assert response.event == RouterResponseEvents.STARTED
+
+    # already started train should return an error response
+    response = router._start_train(train_id=test_id)
+    assert response.event == RouterResponseEvents.FAILED
+    assert response.error_code == RouterErrorCodes.TRAIN_ALREADY_STARTED
+
+    # stop train and start it again
+    response = router._stop_train(train_id=test_id)
+    assert response.event == RouterResponseEvents.STOPPED
+
+    response = router._start_train(train_id=test_id)
+    assert response.event == RouterResponseEvents.STARTED
+
+    # cleanup created test values from redis
+    router.redis_store.remove_train_from_store(train_id=test_id)
+
+def test_routing(router, vault_client, redis_client):
+    test_id = "routing-test"
+
+    # initialize train route in redis and vault
+    route = VaultRoute(repositorySuffix=test_id, harborProjects=["1", "2", "3"], periodic=False)
+    vault_client.secrets.kv.v2.create_or_update_secret(
+        mount_point="kv-pht-routes",
+        path=test_id,
+        secret=route.__dict__,
+    )
+    redis_client.delete(f"{test_id}-stations")
+    router._initialize_train(train_id=test_id)
+
+    # setup test train in pht_incoming repo
+    test_base_image = "test/test-image"
+    harbor_url = os.getenv("HARBOR_API")
+    params = {
+        "from": test_base_image + ":latest",
+    }
+    params_base = {
+        "from": test_base_image + ":base",
+    }
+    url = f"{harbor_url}/projects/pht_incoming/repositories/{test_id}/artifacts"
+    response = requests.post(url=url, params=params, auth=router.harbor_auth, headers=router.harbor_headers)
+    response = requests.post(url=url, params=params_base, auth=router.harbor_auth, headers=router.harbor_headers)
+
+    response = router._start_train(train_id=test_id)
+    assert response.event == RouterResponseEvents.STARTED
+
+    current_station = router.redis_store.get_current_station(train_id=test_id)
+
+    # Fire push events until the end of the route is reached
+    pushed_command = RouterCommand(
+        event_type=RouterEvents.TRAIN_PUSHED,
+        train_id=test_id,
+        project=f"station_{current_station}",
+        operator="test"
+    )
+    router.process_command(pushed_command)
+
+    current_station = router.redis_store.get_current_station(train_id=test_id)
+
+    pushed_command = RouterCommand(
+        event_type=RouterEvents.TRAIN_PUSHED,
+        train_id=test_id,
+        project=f"station_{current_station}",
+        operator="test"
+    )
+    router.process_command(pushed_command)
+
+    current_station = router.redis_store.get_current_station(train_id=test_id)
+
+    pushed_command = RouterCommand(
+        event_type=RouterEvents.TRAIN_PUSHED,
+        train_id=test_id,
+        project=f"station_{current_station}",
+        operator="test"
+    )
+    router.process_command(pushed_command)
+
+    current_station = router.redis_store.get_current_station(train_id=test_id)
+
+    pushed_command = RouterCommand(
+        event_type=RouterEvents.TRAIN_PUSHED,
+        train_id=test_id,
+        project=f"station_{current_station}",
+        operator="test"
+    )
+    router.process_command(pushed_command)
+
+    # cleanup created test values from redis
+    router.redis_store.remove_train_from_store(train_id=test_id)

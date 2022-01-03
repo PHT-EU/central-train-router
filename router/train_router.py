@@ -291,10 +291,9 @@ class TrainRouter:
 
         # move finished train to outgoing repository
         if next_station == CentralStations.OUTGOING.value:
-            logger.info("Train {} finished it's router moving to outgoing", train_id)
+            logger.info("Train {} finished it's router moving to pht_outgoing", train_id)
             self._move_train(train_id=train_id, origin=current_station, dest=next_station)
             self.redis_store.set_train_status(train_id, TrainStatus.COMPLETED)
-            # todo cleanup train storage when finished?
             return RouterResponse(
                 event=RouterResponseEvents.COMPLETED,
                 train_id=train_id,
@@ -307,72 +306,6 @@ class TrainRouter:
             train_id=train_id,
             message=f"Origin: {current_station} - Destination: {next_station}"
         )
-
-    def process_train(self, train_id: str, current_project: str):
-        """
-        Processes a train image tagged with the pht_next label according the route stored in redis
-
-        :param current_project: the harbor project the train currently resides in
-        :param train_id: identifier of the train repository
-        :return:
-        """
-
-        route_type = self.redis.get(f"{train_id}-type")
-        # TODO perform different actions based on route type
-        # If the route exists move to next station project
-
-        if route_type:
-            if self.redis.get(f"{train_id}-status") == "running":
-                if self.redis.exists(f"{train_id}-route"):
-                    next_station_id = self.redis.rpop(f"{train_id}-route")
-                    LOGGER.info(f"Moving train {train_id} from {current_project} to station_{next_station_id}")
-                    self._move_train(train_id, origin=current_project, dest=next_station_id)
-
-                    # if demo mode is enabled immediately trigger the execution of the train once it is moved
-                    if self.demo_mode:
-                        try:
-                            response = self.start_train_for_demo_station(train_id, next_station_id)
-                            LOGGER.info(f"Successfully started train {train_id} for station {next_station_id}")
-                            LOGGER.info(response)
-                        except HTTPError as e:
-                            LOGGER.error(f"Error starting train {train_id} for station {next_station_id}")
-                            LOGGER.error(e)
-
-                # otherwise move to pht_outgoing
-                else:
-                    LOGGER.info(f"No more steps in the route moving {train_id} to pht_outgoing")
-                    self._move_train(train_id, origin=current_project, dest="pht_outgoing", outgoing=True)
-                    self._clean_up_finished_train(train_id)
-            else:
-                LOGGER.info(f"Train {train_id} is stopped. Ignoring push event")
-
-        else:
-            LOGGER.info(f"Image {train_id} not registered. Ignoring...")
-
-    def update_train_status(self, train_id: str, status: str):
-        """
-        Update the train status of the train with the given id in redis with a new status
-
-        :param train_id: identifier of the train
-        :param status: the new status to be set in redis
-        :return:
-        """
-        self.redis.set(f"{train_id}-status", status)
-
-    def _clean_up_finished_train(self, train_id: str):
-        """
-        Removes the stored values from redis and vault once a train is finished and moved to the pht_outgoing project
-
-        :param train_id:
-        :return:
-        """
-        # Remove the entries for the train from redis
-        self.redis.delete(f"{train_id}-route")
-        self.redis.delete(f"{train_id}-stations")
-        self.redis.delete(f"{train_id}-type")
-        self.redis.delete(f"{train_id}-status")
-        # Remove route from vault storage
-        self._remove_route_from_vault(train_id)
 
     def sync_routes_with_vault(self):
         """
@@ -413,28 +346,6 @@ class TrainRouter:
 
         return routes
 
-    def _add_route_to_redis(self, route: dict):
-        """
-        Takes the route data received from vault and stores it in redis for processing
-        :param route: dictionary containing the participating stations, route type and train id
-        :return:
-        """
-
-        train_id = route["repositorySuffix"]
-        stations = route["harborProjects"]
-        # Store the participating stations as well as the route type separately
-        print(stations)
-
-        if stations:
-            self.redis.rpush(f"{train_id}-stations", *stations)
-        # Shuffle the stations to create a randomized route
-        random.shuffle(stations)
-        self.redis.set(f"{train_id}-status", "stopped")
-        self.redis.rpush(f"{train_id}-route", *stations)
-        self.redis.set(f"{train_id}-type", "periodic" if route["periodic"] else "linear")
-
-        # TODO store the number of epochs somewhere/ also needs to be set when specifying periodic routes
-
     def get_route_data_from_vault(self, train_id: str):
         """
         Get the route data for the given train_id from the vault REST api
@@ -451,13 +362,13 @@ class TrainRouter:
             self._add_route_to_redis(route)
 
         except:
-            LOGGER.error(f"Error getting routes from vault for train {train_id}")
-            LOGGER.exception("Traceback")
+            logger.error(f"Error getting routes from vault for train {train_id}")
+            logger.exception("Traceback")
 
     def _remove_route_from_vault(self, train_id: str):
         url = f"{self.vault_url}/v1/kv-pht-routes/data/{train_id}"
         r = requests.delete(url, headers=self.vault_headers)
-        LOGGER.info(r.text)
+        logger.info(f"Removed route for train {train_id} from vault")
 
     def _move_train(self, train_id: str, origin: str, dest: str, delete=True, outgoing: bool = False):
         """
@@ -472,43 +383,27 @@ class TrainRouter:
 
         if dest == "pht_outgoing":
             url = f"{self.harbor_api_url}/projects/{dest}/repositories/{train_id}/artifacts"
+            outgoing = True
         else:
             url = f"{self.harbor_api_url}/projects/station_{dest}/repositories/{train_id}/artifacts"
         params_latest = {"from": f"{origin}/{train_id}:latest"}
         params_base = {"from": f"{origin}/{train_id}:base"}
 
         # Move base image
-        LOGGER.info("Moving images")
-
+        logger.info("Moving train images...")
+        icon = u'\u2713'
         if not outgoing:
             base_r = requests.post(url=url, headers=self.harbor_headers, auth=self.harbor_auth, params=params_base)
-            LOGGER.info(f"base:  {base_r.text}")
+            logger.info(f"base: {icon}")
 
         # Move latest image
         latest_r = requests.post(url=url, headers=self.harbor_headers, auth=self.harbor_auth, params=params_latest)
-        LOGGER.info(f"latest:  {latest_r.text}")
+        logger.info(f"latest: {icon}")
 
         if delete:
             delete_url = f"{self.harbor_api_url}/projects/{origin}/repositories/{train_id}"
             r_delete = requests.delete(delete_url, auth=self.harbor_auth, headers=self.harbor_headers)
             LOGGER.info(f"Deleting old artifacts \n {r_delete.text}")
-
-    def _check_artifact_label(self, project_id: str, train_id: str, tag: str = "latest"):
-        """
-        Check if a train image in a project contains the pht_next label
-        :param project_id: harbor project the train image is located in
-        :param train_id: identifier of the train
-        :param tag: the image to check for, defaults to latest
-        :return:
-        """
-        url = f'{self.harbor_api_url}/projects/{project_id}/repositories/{train_id}/artifacts/{tag}'
-        r = requests.get(url=url, headers=self.harbor_headers, auth=self.harbor_auth, params={"with_label": True})
-        labels = r.json()["labels"]
-        if labels and not any(d["name"] == "pht_next" for d in labels):
-            print("Found next label")
-            return True
-        else:
-            return False
 
     def start_train_for_demo_station(self, train_id: str, station_id: str, airflow_config: dict = None):
         LOGGER.info(f"Starting train for demo station {station_id}")
