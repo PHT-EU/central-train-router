@@ -96,6 +96,12 @@ class TrainRouter:
             self._get_demo_stations()
 
     def process_command(self, command: RouterCommand) -> RouterResponse:
+        """
+        Main processing method of the train router. This method will process a command from the message queue and
+        return a response to be published to the message queue.
+        :param command:
+        :return:
+        """
 
         if command.event_type == RouterEvents.TRAIN_BUILT:
             self._initialize_train(command.train_id)
@@ -108,8 +114,7 @@ class TrainRouter:
             pass
 
         elif command.event_type == RouterEvents.TRAIN_STATUS:
-            pass
-
+            response = self._read_train_status(command.train_id)
         else:
             raise ValueError(f"Unknown event type: {command.event_type}")
 
@@ -195,6 +200,65 @@ class TrainRouter:
             message="Train started successfully"
         )
 
+    def _stop_train(self, train_id: str) -> RouterResponse:
+        """
+        Check the status of a train, if it is running, attempt to stop it
+
+        :param train_id:
+        :return: Response object to be sent to the queue
+        """
+        logger.info("Attempting to stop train - {}", train_id)
+        try:
+            train_status = self.redis_store.get_train_status(train_id)
+        # if the train is not found return an error response
+        except ValueError:
+            logger.error("Train {} does not exist in redis", train_id)
+            return RouterResponse(
+                event=RouterResponseEvents.FAILED,
+                train_id=train_id,
+                error_code=RouterErrorCodes.TRAIN_NOT_FOUND)
+
+        # if train is already stopped return error response
+        if train_status == TrainStatus.STOPPED:
+            logger.error("Train {} is already stopped.", train_id)
+            return RouterResponse(
+                event=RouterResponseEvents.FAILED,
+                train_id=train_id,
+                message="Train is already stopped",
+                error_code=RouterErrorCodes.TRAIN_ALREADY_STOPPED
+            )
+
+        # if train is not running return error response
+        if train_status == TrainStatus.INITIALIZED:
+            logger.error("Train {} is not running.", train_id)
+            return RouterResponse(
+                event=RouterResponseEvents.FAILED,
+                train_id=train_id,
+                message="Train is not running",
+                error_code=RouterErrorCodes.TRAIN_NOT_STARTED
+            )
+
+        # if train is not running return error response
+        if train_status == TrainStatus.RUNNING or train_status == TrainStatus.STARTED:
+            logger.info("Train is running, stopping...")
+            self.redis_store.set_train_status(train_id, TrainStatus.STOPPED)
+            logger.info("Train {} successfully stopped", train_id)
+            return RouterResponse(
+                event=RouterResponseEvents.STOPPED,
+                train_id=train_id,
+                message="Train stopped successfully"
+            )
+
+        else:
+            logger.error("Unknown train status: {} for train: ", train_status, train_id)
+
+    def _read_train_status(self, train_id: str) -> RouterResponse:
+        status = self.redis_store.get_train_status(train_id)
+        return RouterResponse(
+            event=RouterResponseEvents.STATUS,
+            train_id=train_id,
+            message=status.value
+        )
 
     def process_train(self, train_id: str, current_project: str):
         """

@@ -19,6 +19,7 @@ class RouterResponseEvents(Enum):
     STARTED = "trainStarted"
     STOPPED = "trainStopped"
     FAILED = "trainFailed"
+    STATUS = "trainStatus"
 
 
 class RouterErrorCodes(Enum):
@@ -28,3 +29,5 @@ class RouterErrorCodes(Enum):
     TRAIN_NOT_FOUND = 0
     TRAIN_ALREADY_STARTED = 1
     TRAIN_ALREADY_STOPPED = 2
+    TRAIN_NOT_STARTED = 3
+
