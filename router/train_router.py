@@ -1,18 +1,16 @@
-import json
 import os
 import redis
 import requests
 from typing import List
 import random
 import logging
-from dataclasses import dataclass
 import hvac
 from requests import HTTPError
 from loguru import logger
 
 from router.messages import RouterCommand, RouterResponse
 from router.events import RouterEvents, RouterResponseEvents, RouterErrorCodes
-from router.train_store import RouterRedisStore, VaultRoute, DemoStation
+from router.train_store import RouterRedisStore, VaultRoute, DemoStation, TrainStatus
 
 LOGGER = logging.getLogger(__name__)
 
@@ -102,8 +100,7 @@ class TrainRouter:
         if command.event_type == RouterEvents.TRAIN_BUILT:
             self._initialize_train(command.train_id)
         elif command.event_type == RouterEvents.TRAIN_START:
-            pass
-
+            response = self._start_train(command.train_id)
         elif command.event_type == RouterEvents.TRAIN_STOP:
             pass
 
@@ -116,18 +113,88 @@ class TrainRouter:
         else:
             raise ValueError(f"Unknown event type: {command.event_type}")
 
+        return response
+
     def _initialize_train(self, train_id: str) -> None:
         """
         Get route from vault and initialize train in redis
         :param train_id:
         :return:
         """
-        vault_data = self.vault_client.secrets.kv.v2.read_secret_version(
-            path=train_id,
-            mount_point=self.vault_route_engine
-        )
+        logger.info("Initializing train {}", train_id)
+        logger.info("Getting route from vault...")
+        try:
+            vault_data = self.vault_client.secrets.kv.v2.read_secret_version(
+                path=train_id,
+                mount_point=self.vault_route_engine
+            )
+            logger.info("Success")
+        except Exception as e:
+            logger.error("Failed to get route from vault: {}", e)
+            raise (e)
+
         route = VaultRoute(**vault_data["data"]["data"])
+        logger.info("Initializing train in redis...")
         self.redis_store.register_train(route)
+        logger.info("Success")
+
+    def _start_train(self, train_id: str) -> RouterResponse:
+        """
+        Check the status of a train, if it is not running, attempt to start it
+
+        :param train_id:
+        :return: Response object to be sent to the queue
+        """
+        logger.info("Attempting to start train - {}", train_id)
+        try:
+            train_status = self.redis_store.get_train_status(train_id)
+        # if the train is not found return an error response
+        except ValueError:
+            logger.error("Train {} does not exist in redis", train_id)
+            return RouterResponse(
+                event=RouterResponseEvents.FAILED,
+                train_id=train_id,
+                error_code=RouterErrorCodes.TRAIN_NOT_FOUND)
+
+        # if train is already running return error response
+        if train_status == TrainStatus.STARTED or train_status == TrainStatus.RUNNING:
+            logger.error("Train {} is already started.", train_id)
+            return RouterResponse(
+                event=RouterResponseEvents.FAILED,
+                train_id=train_id,
+                message="Train is already started",
+                error_code=RouterErrorCodes.TRAIN_ALREADY_STARTED
+            )
+
+        if train_status == TrainStatus.STOPPED:
+            logger.info("Train is stopped, restarting...")
+            origin_station = self.redis_store.get_current_station(train_id)
+            destination_station = self.redis_store.get_next_station_on_route(train_id)
+
+        elif train_status == TrainStatus.INITIALIZED:
+            logger.info("Moving train out of pht_incoming...")
+            origin_station = self.redis_store.get_current_station(train_id)
+            destination_station = self.redis_store.get_next_station_on_route(train_id)
+
+        else:
+            logger.error("Unknown train status: {}", train_status)
+            return RouterResponse(
+                event=RouterResponseEvents.FAILED,
+                train_id=train_id,
+                error_code=RouterErrorCodes.TRAIN_NOT_FOUND
+            )
+
+        # Move the train images
+        self._move_train(train_id=train_id, origin=origin_station, dest=destination_station)
+        self.redis_store.set_train_status(train_id, TrainStatus.RUNNING)
+        self.redis_store.set_current_station(train_id, destination_station)
+        logger.info("Train {} successfully started", train_id)
+        return RouterResponse(
+            event=RouterResponseEvents.STARTED,
+            train_id=train_id,
+            message="Train started successfully"
+        )
+
 
     def process_train(self, train_id: str, current_project: str):
         """
@@ -292,9 +359,9 @@ class TrainRouter:
         """
 
         if dest == "pht_outgoing":
-            url = f"{self.harbor_api}/projects/{dest}/repositories/{train_id}/artifacts"
+            url = f"{self.harbor_api_url}/projects/{dest}/repositories/{train_id}/artifacts"
         else:
-            url = f"{self.harbor_api}/projects/station_{dest}/repositories/{train_id}/artifacts"
+            url = f"{self.harbor_api_url}/projects/station_{dest}/repositories/{train_id}/artifacts"
         params_latest = {"from": f"{origin}/{train_id}:latest"}
         params_base = {"from": f"{origin}/{train_id}:base"}
 
@@ -310,7 +377,7 @@ class TrainRouter:
         LOGGER.info(f"latest:  {latest_r.text}")
 
         if delete:
-            delete_url = f"{self.harbor_api}/projects/{origin}/repositories/{train_id}"
+            delete_url = f"{self.harbor_api_url}/projects/{origin}/repositories/{train_id}"
             r_delete = requests.delete(delete_url, auth=self.harbor_auth, headers=self.harbor_headers)
             LOGGER.info(f"Deleting old artifacts \n {r_delete.text}")
 
@@ -322,7 +389,7 @@ class TrainRouter:
         :param tag: the image to check for, defaults to latest
         :return:
         """
-        url = f'{self.harbor_api}/projects/{project_id}/repositories/{train_id}/artifacts/{tag}'
+        url = f'{self.harbor_api_url}/projects/{project_id}/repositories/{train_id}/artifacts/{tag}'
         r = requests.get(url=url, headers=self.harbor_headers, auth=self.harbor_auth, params={"with_label": True})
         labels = r.json()["labels"]
         if labels and not any(d["name"] == "pht_next" for d in labels):
