@@ -36,7 +36,9 @@ jobs:
       - name: Run container tests
         run: |
           docker-compose up -d --build test-train-router redis rabbitmq
-          docker wait test-train-router
+          TEST_CONTAINER_ID=docker inspect -f '{{.Id}}' $(docker-compose ps -q test-train-router) | cut -c2-
+          docker wait $TEST_CONTAINER_ID
+          docker-compose down
       - uses: codecov/codecov-action@v2
         with:
           token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
