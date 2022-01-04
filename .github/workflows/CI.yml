@@ -41,13 +41,12 @@ jobs:
           docker wait "$TEST_CONTAINER_ID"
           docker-compose logs test-router
           docker-compose down
-      - uses: codecov/codecov-action@v2
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
-          files: ./coverage/coverage.xml
-          name: codecov-umbrella # optional
-          fail_ci_if_error: true # optional (default = false)
-          verbose: true # optional (default = false)
+      - name: Upload Code Coverage
+        run: |
+          curl -Os https://uploader.codecov.io/latest/linux/codecov
+          chmod +x codecov
+          ./codecov -t "${{ secrets.CODECOV_TOKEN }}" -f ./coverage/coverage.xml
+          
 
 
 
