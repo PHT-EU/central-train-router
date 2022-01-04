@@ -233,5 +233,3 @@ def test_routing(router, vault_client, redis_client):
     response = router.process_command(pushed_command)
     assert response.event == RouterResponseEvents.FAILED
     # cleanup created test values from redis
-    router.redis_store.remove_train_from_store(train_id=test_id)
-    router._remove_route_from_vault(test_id)

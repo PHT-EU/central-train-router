@@ -5,6 +5,7 @@ from typing import List
 import random
 import logging
 import hvac
+from hvac.exceptions import InvalidPath
 from requests import HTTPError
 from loguru import logger
 
@@ -346,17 +347,26 @@ class TrainRouter:
         vault_routes = []
         for key in secret_keys:
             logger.info(f"Found route for train {key} in vault")
-            route = self.vault_client.secrets.kv.v2.read_secret_version(path=key, mount_point="kv-pht-routes")
+            try:
+                route = self.vault_client.secrets.kv.v2.read_secret_version(path=key, mount_point="kv-pht-routes")
+            except InvalidPath as e:
+                logger.error(f"No route data for train {key} found in vault")
+                logger.error(e)
+                continue
             route_data = route.get("data").get("data")
             vault_routes.append(VaultRoute(**route_data))
         return vault_routes
 
     def _remove_route_from_vault(self, train_id: str) -> None:
-
+        self.vault_client.secrets.kv.v2.delete_secret_versions(
+            path=train_id,
+            mount_point="kv-pht-routes",
+            versions=[1, 2, 3, 4]
+        )
         self.vault_client.secrets.kv.v2.destroy_secret_versions(
             path=train_id,
             mount_point="kv-pht-routes",
-            versions=list(range(50))
+            versions=[1, 2, 3, 4]
         )
         logger.info(f"Removed route for train {train_id} from vault")
 

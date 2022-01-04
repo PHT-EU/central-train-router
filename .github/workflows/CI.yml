@@ -29,7 +29,7 @@ jobs:
       - uses: actions/checkout@v2
       - name: Run container tests
         run: |
-          docker-compose up -d --build train-router redis
+          docker-compose up -d --build test-train-router redis rabbitmq
           docker wait test-train-router
       - uses: codecov/codecov-action@v2
         with:

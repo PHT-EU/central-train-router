@@ -5,6 +5,7 @@ import json
 import logging
 import pika
 
+from router.messages import RouterResponse, RouterCommand
 from router.train_router import TrainRouter
 from train_lib.clients import Consumer
 from train_lib.clients.rabbitmq import LOG_FORMAT
@@ -22,9 +23,6 @@ class TRConsumer(Consumer):
         self.auto_reconnect = True
         # Configure routing key
         self.ROUTING_KEY = routing_key
-        self.router.sync_routes_with_vault()
-        # determine auto start mode
-        self.auto_start = os.getenv("AUTO_START") == "true"
 
     def run(self):
         super().run()
@@ -47,75 +45,26 @@ class TRConsumer(Consumer):
         :param msg:
         :return:
         """
-
+        # parse message and command
         if isinstance(msg, str) or isinstance(msg, bytes):
             msg = json.loads(msg)
+        command = RouterCommand.from_message(msg)
 
-        # If a train is pushed by a station or user process if using the stored routed
-        if msg["type"] == RouterEvents.TRAIN_PUSHED.value:
-            # todo improve this
-            project, train_id = msg["data"]["repositoryFullName"].split("/")
+        # perform requested action
+        response = self.router.process_command(command)
+        # publish response
+        self.publish_events_for_train(response)
 
-            # Ignore push events by system services (such as the TR itself)
-            if not msg["data"].get("operator", "system") == "system":
-                LOGGER.info(f"Moving train: {train_id}")
-                self.router.process_train(train_id, project)
-
-            else:
-                LOGGER.info(f"System Operation detected -> ignoring push event")
-
-        # Perform the initial setup for a train (set up redis k/v pairs)
-        elif msg["type"] == RouterEvents.TRAIN_BUILT.value:
-
-            train_id = msg["data"]["trainId"]
-            LOGGER.info(f"Adding route for new train {train_id}")
-            self.router.get_route_data_from_vault(train_id)
-
-            if self.auto_start:
-                self.start_train(train_id)
-
-        # Start the train by setting its status in redis
-        elif msg["type"] == RouterEvents.TRAIN_START.value:
-            train_id = msg["data"]["trainId"]
-            self.start_train(train_id)
-
-        # Stop the train
-        elif msg["type"] == RouterEvents.TRAIN_STOP.value:
-            train_id = msg["data"]["trainId"]
-            LOGGER.info(f"Stopping train {train_id}.")
-            self.router.update_train_status(train_id, "stopped")
-            self.publish_events_for_train(train_id=train_id, event_type="trainStopped")
-
-        else:
-            train_id = msg["data"]["trainId"]
-            LOGGER.info(f"Invalid event {msg['type']}")
-            self.publish_events_for_train(train_id=train_id, event_type="trainFailed")
-
-    def publish_events_for_train(self, train_id: str, event_type: str, message_body: str = None, exchange: str = "pht",
+    def publish_events_for_train(self, response: RouterResponse, exchange: str = "pht",
                                  exchange_type: str = "topic", routing_key: str = "ui.tr.event"):
 
-        # todo add error codes
-        message = {
-            "type": event_type,
-            "data": {
-                "trainId": train_id,
-                "message": message_body,
-            }
-        }
         connection = pika.BlockingConnection(pika.URLParameters(self.ampq_url))
         channel = connection.channel()
         channel.exchange_declare(exchange=exchange, exchange_type=exchange_type, durable=True)
-        json_message = json.dumps(message).encode("utf-8")
-
+        json_message = response.make_queue_message()
         channel.basic_publish(exchange=exchange, routing_key=routing_key, body=json_message)
         LOGGER.info(" [x] Sent %r" % json_message)
         connection.close()
-
-    def start_train(self, train_id: str):
-        LOGGER.info(f"Starting train {train_id}.")
-        self.router.update_train_status(train_id, "running")
-        self.router.process_train(train_id, "pht_incoming")
-        self.publish_events_for_train(train_id=train_id, event_type="trainStarted")
 
 
 def main():

@@ -1,6 +1,6 @@
 version: '3.8'
 services:
-  train-router:
+  test-train-router:
     build: .
     container_name: test-train-router
     env_file:
@@ -10,6 +10,15 @@ services:
     command: /entrypoint.sh test
     volumes:
       - ./coverage:/opt/coverage
+
+  train-router:
+    build: .
+    container_name: test-train-router
+    env_file:
+      - .env
+    environment:
+      - REDIS_HOST=redis
+    command: /entrypoint.sh run
 
   redis:
       image: "redis:alpine"
