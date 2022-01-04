@@ -60,7 +60,7 @@ def test_router_init():
         with pytest.raises(ValueError):
             router = TrainRouter()
 
-    with mock.patch.dict(os.environ, {'HARBOR_API': ''}):
+    with mock.patch.dict(os.environ, {'HARBOR_URL': ''}):
         with pytest.raises(ValueError):
             router = TrainRouter()
 

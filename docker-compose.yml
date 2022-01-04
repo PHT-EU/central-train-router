@@ -1,19 +1,28 @@
 version: '3.8'
 services:
-  test-train-router:
+  test-router:
     build: .
     container_name: test-train-router
     env_file:
       - .env
     environment:
       - REDIS_HOST=redis
+      - AMPQ_URL=amqp://admin:admin@rabbitmq:5672/
+      - VAULT_URL=$VAULT_URL
+      - VAULT_TOKEN=$VAULT_TOKEN
+      - HARBOR_URL=$HARBOR_URL
+      - HARBOR_USER=$HARBOR_USER
+      - HARBOR_PW=$HARBOR_PW
+      - UI_TRAIN_API=https://dev-pht.grafm.de/api/trains/
+      - AUTO_START=false
+      - DEMONSTRATION_MODE=false
     command: /entrypoint.sh test
     volumes:
       - ./coverage:/opt/coverage
 
   train-router:
     build: .
-    container_name: test-train-router
+    container_name: train-router
     env_file:
       - .env
     environment:

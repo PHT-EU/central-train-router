@@ -60,9 +60,9 @@ class TrainRouter:
         logger.info("Successfully connected to Vault")
 
         logger.info("Setting up harbor connection, with environment variables")
-        self.harbor_api_url = os.getenv("HARBOR_API")
+        self.harbor_api_url = os.getenv("HARBOR_URL") + "/api/v2.0"
         if not self.harbor_api_url:
-            raise ValueError("HARBOR_API not set in environment variables")
+            raise ValueError("HARBOR_URL not set in environment variables")
         self.harbor_user = os.getenv("HARBOR_USER")
         if not self.harbor_user:
             raise ValueError("HARBOR_USER not set in environment variables")
