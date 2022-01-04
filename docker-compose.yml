@@ -18,14 +18,14 @@ services:
     volumes:
       - ./coverage:/opt/coverage
 
-  train-router:
-    build: .
-    container_name: train-router
-    env_file:
-      - .env
-    environment:
-      - REDIS_HOST=redis
-    command: /entrypoint.sh run
+#  train-router:
+#    build: .
+#    container_name: train-router
+#    env_file:
+#      - .env
+#    environment:
+#      - REDIS_HOST=redis
+#    command: /entrypoint.sh run
 
   redis:
       image: "redis:alpine"
