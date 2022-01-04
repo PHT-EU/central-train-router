@@ -26,7 +26,7 @@ jobs:
   test-and-codecov:
     runs-on: [ self-hosted, linux, x64, docker ]
     env:
-      HARBOR_URL: ${{ secrets.DEV_REGISTRY_URL }}
+      HARBOR_URL: ${{ secrets.DEV_REGISTRY }}
       HARBOR_USER: ${{ secrets.DEV_REGISTRY_USER }}
       HARBOR_PW: ${{ secrets.DEV_REGISTRY_PASSWORD }}
       VAULT_URL: ${{ secrets.DEV_VAULT_URL }}
