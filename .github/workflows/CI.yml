@@ -33,7 +33,7 @@ jobs:
       VAULT_TOKEN: ${{ secrets.DEV_VAULT_TOKEN }}
     steps:
       - uses: actions/checkout@v2
-      - name: Run container tests
+      - name: Run container tests and upload coverage
         run: |
           chmod +x entrypoint.sh
           docker-compose up -d --build test-router redis rabbitmq
@@ -41,11 +41,10 @@ jobs:
           docker wait "$TEST_CONTAINER_ID"
           docker-compose logs test-router
           docker-compose down
-      - name: Upload Code Coverage
-        run: |
           curl -Os https://uploader.codecov.io/latest/linux/codecov
           chmod +x codecov
           ./codecov -t "${{ secrets.CODECOV_TOKEN }}" -f ./coverage/coverage.xml
+          
           
 
 
