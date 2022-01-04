@@ -16,7 +16,7 @@ services:
       - DEMONSTRATION_MODE=false
     command: /entrypoint.sh test
     volumes:
-      - ./:/opt/coverage
+      - ./coverage:/opt/coverage
 
 #  train-router:
 #    build: .

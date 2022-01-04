@@ -39,11 +39,13 @@ jobs:
           docker-compose up -d --build test-router redis rabbitmq
           TEST_CONTAINER_ID=$(docker inspect -f '{{.Name}}' $(docker-compose ps -q test-router) | cut -c2-)
           docker wait "$TEST_CONTAINER_ID"
+          mkdir coverage
           docker-compose logs test-router
           docker-compose down
       - uses: codecov/codecov-action@v2
         with:
           token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
+          files: ./coverage/coverage.xml
           name: codecov-umbrella # optional
           fail_ci_if_error: true # optional (default = false)
           verbose: true # optional (default = false)
