@@ -220,16 +220,14 @@ class TrainRouter:
         :return: Response object to be sent to the queue
         """
         logger.info("Attempting to stop train - {}", train_id)
-        try:
-            train_status = self.redis_store.get_train_status(train_id)
-        # if the train is not found return an error response
-        except ValueError:
+        if not self.redis_store.exists(train_id):
             logger.error("Train {} does not exist in redis", train_id)
             return RouterResponse(
                 event=RouterResponseEvents.FAILED,
                 train_id=train_id,
                 error_code=RouterErrorCodes.TRAIN_NOT_FOUND)
 
+        train_status = self.redis_store.get_train_status(train_id)
         # if train is already stopped return error response
         if train_status == TrainStatus.STOPPED:
             logger.error("Train {} is already stopped.", train_id)
@@ -322,59 +320,44 @@ class TrainRouter:
         :return:
         """
 
-        LOGGER.info("Syncing redis routes with vault storage")
-        try:
-            routes = self._get_all_routes_from_vault()
+        logger.info("Syncing redis with vault storage...")
+        routes = self._get_all_routes_from_vault()
 
-            # Iterate over all routes and add them to redis if they dont exist
-            for train_id in routes:
-                # self.redis.delete(f"{train_id}-stations", f"{train_id}-type")
-                if not self.redis.exists(f"{train_id}-stations"):
-                    LOGGER.debug(f"Adding train {train_id} to redis storage.")
-                    self.get_route_data_from_vault(train_id)
+        if routes:
+            for route in routes:
+                if not self.redis_store.exists(route.repositorySuffix):
+                    logger.info("Route for train {} does not exist in redis, adding...", route.repositorySuffix)
+                    self.redis_store.register_train(route)
                 else:
-                    LOGGER.info(f"Route for train {train_id} already exists")
-            LOGGER.info("Synchronized redis")
-        except:
-            LOGGER.error(f"Error syncing with vault")
-            LOGGER.exception("Traceback")
+                    logger.info("Route for train {} already exists in redis, skipping...", route.repositorySuffix)
+        else:
+            logger.info("No routes found in vault storage")
 
-    def _get_all_routes_from_vault(self) -> List[str]:
+    def _get_all_routes_from_vault(self) -> List[VaultRoute]:
         """
         Queries the kv-pht-routes secret engines and returns a list of the keys (train ids) stored in vault
         :return:
         """
 
-        url = f"{self.vault_url}/v1/kv-pht-routes/metadata"
+        vault_secrets = self.vault_client.secrets.kv.v2.list_secrets(path="", mount_point="kv-pht-routes")
+        secret_keys = vault_secrets.get("data").get("keys")
+        if not secret_keys:
+            return []
+        vault_routes = []
+        for key in secret_keys:
+            logger.info(f"Found route for train {key} in vault")
+            route = self.vault_client.secrets.kv.v2.read_secret_version(path=key, mount_point="kv-pht-routes")
+            route_data = route.get("data").get("data")
+            vault_routes.append(VaultRoute(**route_data))
+        return vault_routes
 
-        r = requests.get(url=url, params={"list": True}, headers=self.vault_headers)
-        r.raise_for_status()
-        routes = r.json()["data"]["keys"]
+    def _remove_route_from_vault(self, train_id: str) -> None:
 
-        return routes
-
-    def get_route_data_from_vault(self, train_id: str):
-        """
-        Get the route data for the given train_id from the vault REST api
-
-        :param train_id:
-        :return:
-        """
-        try:
-            url = f"{self.vault_url}/v1/kv-pht-routes/data/{train_id}"
-            r = requests.get(url, headers=self.vault_headers)
-            r.raise_for_status()
-            route = r.json()["data"]["data"]
-            # Add the received route from redis
-            self._add_route_to_redis(route)
-
-        except:
-            logger.error(f"Error getting routes from vault for train {train_id}")
-            logger.exception("Traceback")
-
-    def _remove_route_from_vault(self, train_id: str):
-        url = f"{self.vault_url}/v1/kv-pht-routes/data/{train_id}"
-        r = requests.delete(url, headers=self.vault_headers)
+        self.vault_client.secrets.kv.v2.destroy_secret_versions(
+            path=train_id,
+            mount_point="kv-pht-routes",
+            versions=list(range(50))
+        )
         logger.info(f"Removed route for train {train_id} from vault")
 
     def _move_train(self, train_id: str, origin: str, dest: str, delete=True, outgoing: bool = False):

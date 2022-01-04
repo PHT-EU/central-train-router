@@ -80,6 +80,10 @@ def test_router_init():
         router = TrainRouter()
 
 
+def test_router_vault_synchronization(router, vault_client, redis_client):
+    router.sync_routes_with_vault()
+
+
 def test_initialize_train(router, vault_client, redis_client):
     # add a test route to vault
     test_id = "router-test"
@@ -153,6 +157,7 @@ def test_router_start_train(router, vault_client, redis_client):
     # cleanup created test values from redis
     router.redis_store.remove_train_from_store(train_id=test_id)
 
+
 def test_routing(router, vault_client, redis_client):
     test_id = "routing-test"
 
@@ -191,7 +196,20 @@ def test_routing(router, vault_client, redis_client):
         project=f"station_{current_station}",
         operator="test"
     )
-    router.process_command(pushed_command)
+    response = router.process_command(pushed_command)
+    assert response.event == RouterResponseEvents.MOVED
+
+    current_station = router.redis_store.get_current_station(train_id=test_id)
+
+    assert current_station == "1"
+    pushed_command = RouterCommand(
+        event_type=RouterEvents.TRAIN_PUSHED,
+        train_id=test_id,
+        project=f"station_{current_station}",
+        operator="test"
+    )
+    response = router.process_command(pushed_command)
+    assert response.event == RouterResponseEvents.MOVED
 
     current_station = router.redis_store.get_current_station(train_id=test_id)
 
@@ -201,7 +219,8 @@ def test_routing(router, vault_client, redis_client):
         project=f"station_{current_station}",
         operator="test"
     )
-    router.process_command(pushed_command)
+    response = router.process_command(pushed_command)
+    assert response.event == RouterResponseEvents.COMPLETED
 
     current_station = router.redis_store.get_current_station(train_id=test_id)
 
@@ -211,17 +230,8 @@ def test_routing(router, vault_client, redis_client):
         project=f"station_{current_station}",
         operator="test"
     )
-    router.process_command(pushed_command)
-
-    current_station = router.redis_store.get_current_station(train_id=test_id)
-
-    pushed_command = RouterCommand(
-        event_type=RouterEvents.TRAIN_PUSHED,
-        train_id=test_id,
-        project=f"station_{current_station}",
-        operator="test"
-    )
-    router.process_command(pushed_command)
-
+    response = router.process_command(pushed_command)
+    assert response.event == RouterResponseEvents.FAILED
     # cleanup created test values from redis
     router.redis_store.remove_train_from_store(train_id=test_id)
+    router._remove_route_from_vault(test_id)

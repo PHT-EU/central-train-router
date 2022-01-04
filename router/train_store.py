@@ -52,6 +52,9 @@ class RouterRedisStore:
     def __init__(self, redis_client: redis.Redis):
         self.redis_client = redis_client
 
+    def exists(self, train_id: str) -> bool:
+        return self.redis_client.exists(f"{train_id}-stations") == 1
+
     def register_train(self, vault_route: VaultRoute):
         train_id = vault_route.repositorySuffix
         # Register participating stations and route type in redis
