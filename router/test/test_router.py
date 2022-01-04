@@ -125,7 +125,7 @@ def test_router_start_train(router, vault_client, redis_client):
 
     # setup test train in pht incoming repo
     test_base_image = "test/test-image"
-    harbor_url = os.getenv("HARBOR_API")
+    harbor_url = os.getenv("HARBOR_URL") + "/api/v2.0"
     params = {
         "from": test_base_image + ":latest",
     }
