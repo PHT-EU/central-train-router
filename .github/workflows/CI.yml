@@ -37,7 +37,7 @@ jobs:
         run: |
           chmod +x entrypoint.sh
           docker-compose up -d --build test-router redis rabbitmq
-          TEST_CONTAINER_ID=docker inspect -f '{{.Id}}' $(docker-compose ps -q test-router) | cut -c2-
+          TEST_CONTAINER_ID=$(docker inspect -f '{{.Id}}' $(docker-compose ps -q test-router) | cut -c2-)
           echo "TEST_CONTAINER_ID=$TEST_CONTAINER_ID"
           docker wait "$TEST_CONTAINER_ID"
           docker-compose down
