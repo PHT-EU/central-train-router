@@ -3,8 +3,6 @@ services:
   test-router:
     build: .
     container_name: test-train-router
-    env_file:
-      - .env
     environment:
       - REDIS_HOST=redis
       - AMPQ_URL=amqp://admin:admin@rabbitmq:5672/
