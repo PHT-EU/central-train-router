@@ -18,5 +18,7 @@ RUN pipenv install --system --deploy --ignore-pipfile
 COPY . /opt/router
 
 COPY ./entrypoint.sh /
+
+RUN chmod +x /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["run"]
