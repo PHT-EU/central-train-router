@@ -5,8 +5,8 @@ RUN apt -y update && apt-get -y install software-properties-common
 RUN add-apt-repository ppa:deadsnakes/ppa && apt -y update && apt -y install git && \
     apt-get install -y python3.9 && apt install python-is-python3 && apt install -y python3-pip && \
     rm -rf /var/lib/apt/lists && \
-    pip install pipenv && \
-    rm -rf /var/lib/apt/lists
+    pip install pipenv
+RUN rm -rf /var/lib/apt/lists
 
 WORKDIR /opt/train-router/
 
