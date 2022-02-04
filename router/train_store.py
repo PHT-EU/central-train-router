@@ -28,7 +28,7 @@ class CentralStations(Enum):
 
 @dataclass
 class VaultRoute:
-    harborProjects: List[str]
+    stations: List[str]
     periodic: bool
     repositorySuffix: str
     epochs: int = None
@@ -58,8 +58,8 @@ class RouterRedisStore:
     def register_train(self, vault_route: VaultRoute):
         train_id = vault_route.repositorySuffix
         # Register participating stations and route type in redis
-        self.redis_client.rpush(f"{train_id}-stations", *vault_route.harborProjects)
-        self.redis_client.rpush(f"{train_id}-route", *vault_route.harborProjects)
+        self.redis_client.rpush(f"{train_id}-stations", *vault_route.stations)
+        self.redis_client.rpush(f"{train_id}-route", *vault_route.stations)
         self.redis_client.set(f"{train_id}-type", "periodic" if vault_route.periodic else "linear")
         self.set_current_station(train_id, CentralStations.INCOMING.value)
 

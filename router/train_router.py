@@ -1,4 +1,6 @@
 import os
+from pprint import pprint
+
 import redis
 import requests
 from typing import List
@@ -21,7 +23,7 @@ class TrainRouter:
     vault_token: str
     vault_client: hvac.Client
     vault_headers: dict
-    vault_route_engine: str = "kv-pht-routes"
+    vault_route_engine: str = "routes"
     harbor_api_url: str
     harbor_user: str
     harbor_password: str
@@ -340,20 +342,21 @@ class TrainRouter:
         :return:
         """
 
-        vault_secrets = self.vault_client.secrets.kv.v2.list_secrets(path="", mount_point="kv-pht-routes")
+        vault_secrets = self.vault_client.secrets.kv.v1.list_secrets(path="", mount_point="routes")
         secret_keys = vault_secrets.get("data").get("keys")
+        pprint(secret_keys)
         if not secret_keys:
             return []
         vault_routes = []
         for key in secret_keys:
             logger.info(f"Found route for train {key} in vault")
             try:
-                route = self.vault_client.secrets.kv.v2.read_secret_version(path=key, mount_point="kv-pht-routes")
+                route = self.vault_client.secrets.kv.v1.read_secret(path=key, mount_point="routes")
             except InvalidPath as e:
                 logger.error(f"No route data for train {key} found in vault")
                 logger.error(e)
                 continue
-            route_data = route.get("data").get("data")
+            route_data = route.get("data")
             vault_routes.append(VaultRoute(**route_data))
         return vault_routes
 

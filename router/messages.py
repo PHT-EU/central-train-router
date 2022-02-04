@@ -56,6 +56,6 @@ class RouterCommand:
             )
         else:
             return cls(
-                train_id=message_dict["data"]["trainId"],
+                train_id=message_dict["data"]["id"],
                 event_type=RouterEvents(message_dict["type"]),
             )
