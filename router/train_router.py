@@ -342,7 +342,11 @@ class TrainRouter:
         :return:
         """
 
-        vault_secrets = self.vault_client.secrets.kv.v1.list_secrets(path="", mount_point="routes")
+        try:
+            vault_secrets = self.vault_client.secrets.kv.v1.list_secrets(path="", mount_point="routes")
+        except Exception as e:
+            logger.error("Error while getting routes from vault: {}", e)
+            return []
         secret_keys = vault_secrets.get("data").get("keys")
         pprint(secret_keys)
         if not secret_keys:
