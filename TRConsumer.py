@@ -48,6 +48,7 @@ class TRConsumer(Consumer):
         # parse message and command
         if isinstance(msg, str) or isinstance(msg, bytes):
             msg = json.loads(msg)
+        print(msg)
         command = RouterCommand.from_message(msg)
 
         # perform requested action

@@ -10,6 +10,7 @@ class RouterEvents(Enum):
     TRAIN_START = "startTrain"
     TRAIN_STOP = "stopTrain"
     TRAIN_STATUS = "trainStatus"
+    TRAIN_RESET = "resetTrain"
 
 
 class RouterResponseEvents(Enum):
