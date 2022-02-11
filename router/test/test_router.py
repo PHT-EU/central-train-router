@@ -233,3 +233,23 @@ def test_routing(router, vault_client, redis_client):
     response = router.process_command(pushed_command)
     assert response.event == RouterResponseEvents.FAILED
     # cleanup created test values from redis
+
+
+def test_router_train_reset(router):
+    train_id = "665eaa94-d559-4ab6-8f82-7198cb9894f4"
+    router._find_train_and_reset(train_id=train_id)
+
+
+def test_retag_artifact(router):
+    api_url = router.harbor_api_url
+    train_id = "665eaa94-d559-4ab6-8f82-7198cb9894f4"
+    url = f"{api_url}/projects/pht_incoming/repositories/{train_id}/artifacts/latest"
+
+    tag_url = f"{api_url}/projects/pht_incoming/repositories/{train_id}/artifacts"
+
+    r = requests.get(url=url, auth=router.harbor_auth, headers=router.harbor_headers)
+    print(r.json())
+
+    del_url = url + "/latest"
+    r = requests.delete(url=del_url, auth=router.harbor_auth, headers=router.harbor_headers)
+    print(r.text)

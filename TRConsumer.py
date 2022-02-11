@@ -4,6 +4,7 @@ import os
 import json
 import logging
 import pika
+from loguru import logger
 
 from router.messages import RouterResponse, RouterCommand
 from router.train_router import TrainRouter
@@ -49,6 +50,8 @@ class TRConsumer(Consumer):
         if isinstance(msg, str) or isinstance(msg, bytes):
             msg = json.loads(msg)
         print(msg)
+        logger.debug(f"Received Message: {msg}")
+
         command = RouterCommand.from_message(msg)
 
         # perform requested action

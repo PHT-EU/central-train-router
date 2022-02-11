@@ -21,9 +21,13 @@ class RouteTypes(Enum):
     PERIODIC = "periodic"
 
 
-class CentralStations(Enum):
+class UtilityStations(Enum):
     INCOMING = "pht_incoming"
     OUTGOING = "pht_outgoing"
+
+    @classmethod
+    def has_value(cls, value):
+        return value in cls._value2member_map_
 
 
 @dataclass
@@ -61,7 +65,7 @@ class RouterRedisStore:
         self.redis_client.rpush(f"{train_id}-stations", *vault_route.stations)
         self.redis_client.rpush(f"{train_id}-route", *vault_route.stations)
         self.redis_client.set(f"{train_id}-type", "periodic" if vault_route.periodic else "linear")
-        self.set_current_station(train_id, CentralStations.INCOMING.value)
+        self.set_current_station(train_id, UtilityStations.INCOMING.value)
 
         # Register epochs if applicable and check that the number of epochs is set if periodic
         if vault_route.periodic and not vault_route.epochs:
@@ -97,7 +101,7 @@ class RouterRedisStore:
             # linear stop at last station
             if route_type == RouteTypes.LINEAR.value:
                 logger.info(f"Train {train_id} has completed its route")
-                return CentralStations.OUTGOING.value
+                return UtilityStations.OUTGOING.value
             # for periodic train check the selected epochs
             elif route_type == RouteTypes.PERIODIC.value:
                 current_round = int(self.redis_client.get(f"{train_id}-epoch"))
@@ -105,7 +109,7 @@ class RouterRedisStore:
                 # all rounds are finished return none
                 if current_round == int(self.redis_client.get(f"{train_id}-epochs")):
                     logger.info(f"Train {train_id} has completed all rounds")
-                    return CentralStations.OUTGOING.value
+                    return UtilityStations.OUTGOING.value
                 # increment epoch and re-register the route and return the next station
                 else:
                     logger.info(
@@ -125,4 +129,3 @@ class RouterRedisStore:
         self.redis_client.delete(f"{train_id}-epoch")
         self.redis_client.delete(f"{train_id}-status")
         logger.info("Success")
-

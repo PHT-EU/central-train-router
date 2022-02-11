@@ -13,7 +13,7 @@ from loguru import logger
 
 from router.messages import RouterCommand, RouterResponse
 from router.events import RouterEvents, RouterResponseEvents, RouterErrorCodes
-from router.train_store import RouterRedisStore, VaultRoute, DemoStation, TrainStatus, CentralStations
+from router.train_store import RouterRedisStore, VaultRoute, DemoStation, TrainStatus, UtilityStations
 
 LOGGER = logging.getLogger(__name__)
 
@@ -122,6 +122,9 @@ class TrainRouter:
 
         elif command.event_type == RouterEvents.TRAIN_STATUS:
             response = self._read_train_status(command.train_id)
+
+        elif command.event_type == RouterEvents.TRAIN_RESET:
+            response = self._reset_train(command.train_id)
 
         else:
             logger.error("Unrecognized event type: {}", command.event_type)
@@ -293,7 +296,7 @@ class TrainRouter:
             )
 
         # move finished train to outgoing repository
-        if next_station == CentralStations.OUTGOING.value:
+        if next_station == UtilityStations.OUTGOING.value:
             logger.info("Train {} finished it's route -> moving to pht_outgoing", train_id)
             self._move_train(train_id=train_id, origin=current_station, dest=next_station)
             self.redis_store.set_train_status(train_id, TrainStatus.COMPLETED)
@@ -388,9 +391,13 @@ class TrainRouter:
         :return:
         """
 
-        if dest == "pht_outgoing":
+        if dest == UtilityStations.OUTGOING.value:
             url = f"{self.harbor_api_url}/projects/{dest}/repositories/{train_id}/artifacts"
             outgoing = True
+
+        elif dest == UtilityStations.INCOMING.value:
+            url = f"{self.harbor_api_url}/projects/{dest}/repositories/{train_id}/artifacts"
+
         else:
             url = f"{self.harbor_api_url}/projects/station_{dest}/repositories/{train_id}/artifacts"
         params_latest = {"from": f"{origin}/{train_id}:latest"}
@@ -410,7 +417,61 @@ class TrainRouter:
         if delete:
             delete_url = f"{self.harbor_api_url}/projects/{origin}/repositories/{train_id}"
             r_delete = requests.delete(delete_url, auth=self.harbor_auth, headers=self.harbor_headers)
-            LOGGER.info(f"Deleting old artifacts \n {r_delete.text}")
+            logger.info(f"Deleted old artifacts \n {r_delete.text}")
+
+    def _reset_train(self, train_id: str):
+        # todo delete latest image and replace with base image
+        # Get the stored route data from vault
+        route = self.vault_client.secrets.kv.v1.read_secret(path=train_id, mount_point="routes")
+        route = VaultRoute(**route.get("data"))
+        # Find the train and move it back to incoming project
+        self._find_train_and_reset(train_id)
+        # check if the train exists in redis if so remove it
+        if self.redis_store.exists(train_id):
+            self.redis_store.remove_train_from_store(train_id)
+
+        # Initialize the train again
+        self.redis_store.register_train(route)
+
+    def _find_train_and_reset(self, train_id: str):
+        incoming_repo = UtilityStations.INCOMING.value
+        search_result = self._find_train(train_id)
+        if search_result:
+            logger.debug("Found train in Harbor")
+            # if the train exists in harbor and isn't in the utility projects, reset it
+            # Todo reset from outgoing repo?
+            for repo in search_result:
+                if not UtilityStations.has_value(repo.get("project_name")):
+                    logger.info(f"Found train in {repo.get('project_name')}, moving back to incoming")
+                    self._move_train(train_id, repo.get("project_name"), incoming_repo, delete=True)
+
+        # reset the latest artifact to the base version
+        self._reset_latest_artifact(train_id)
+
+    def _reset_latest_artifact(self, train_id: str, ):
+        url = f"{self.harbor_api_url}/projects/{UtilityStations.INCOMING.value}/repositories/{train_id}/artifacts"
+        params = {"from": f"{UtilityStations.INCOMING.value}/{train_id}:base"}
+
+        tag_url = url + "/tags"
+
+        print(requests.get(tag_url, headers=self.harbor_headers, auth=self.harbor_auth).text)
+
+    def _find_train(self, train_id: str) -> List[dict]:
+        # search for the train in harbor
+        url = f"{self.harbor_api_url}/search"
+        params = {"q": {train_id}}
+
+        r = requests.get(url=url, params=params, headers=self.harbor_headers, auth=self.harbor_auth)
+        if r.status_code == 200:
+            data = r.json()
+            print(data)
+            if data["repository"]:
+                return data["repository"]
+            else:
+                logger.error(f"Train {train_id} not found in harbor")
+        else:
+            logger.error(f"Error finding train {train_id} in harbor")
+            logger.error(r.text)
 
     def start_train_for_demo_station(self, train_id: str, station_id: str, airflow_config: dict = None):
         LOGGER.info(f"Starting train for demo station {station_id}")
