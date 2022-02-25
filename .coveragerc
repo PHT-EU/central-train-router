@@ -1,0 +1,13 @@
+[run]
+source =
+    router
+    router/test
+
+[paths]
+source =
+    router
+    router/test
+
+[report]
+show_missing = true
+precision = 2

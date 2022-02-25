@@ -1,21 +1,24 @@
 FROM ubuntu
 MAINTAINER michael.graf@uni-tuebingen.de
 # update python version and replace python with python 3
-RUN apt -y update && apt-get -y install software-properties-common
-RUN add-apt-repository ppa:deadsnakes/ppa && apt -y update && apt -y install git && \
+RUN apt -y update && apt-get -y install software-properties-common && \
+    add-apt-repository ppa:deadsnakes/ppa && apt -y update && apt -y install git && \
     apt-get install -y python3.9 && apt install python-is-python3 && apt install -y python3-pip && \
     rm -rf /var/lib/apt/lists && \
-    pip install pipenv
-RUN rm -rf /var/lib/apt/lists
+    pip install pipenv && \
+    rm -rf /var/lib/apt/lists
 
-WORKDIR /opt/train-router/
+WORKDIR /opt/router/
 
-COPY Pipfile /opt/train-router/Pipfile
-COPY Pipfile.lock /opt/train-router/Pipfile.lock
+COPY Pipfile /opt/router/Pipfile
+COPY Pipfile.lock /opt/router/Pipfile.lock
 
 RUN pipenv install --system --deploy --ignore-pipfile
-RUN pip install git+https://github.com/PHT-Medic/train-container-library.git
 
-COPY src /opt/train-router/src
+COPY . /opt/router
 
-CMD ["python", "-u", "/opt/train-router/src/TRConsumer.py"]
+COPY ./entrypoint.sh /
+
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["run"]

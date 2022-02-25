@@ -1,10 +1,44 @@
 version: '3.8'
 services:
-  train_router:
+  test-router:
     build: .
-    env_file:
-      - .env
+    container_name: test-train-router
+    environment:
+      - REDIS_HOST=redis
+      - AMPQ_URL=amqp://admin:admin@rabbitmq:5672/
+      - VAULT_URL=$VAULT_URL
+      - VAULT_TOKEN=$VAULT_TOKEN
+      - HARBOR_URL=$HARBOR_URL
+      - HARBOR_USER=$HARBOR_USER
+      - HARBOR_PW=$HARBOR_PW
+      - UI_TRAIN_API=https://dev-pht.grafm.de/api/trains/
+      - AUTO_START=false
+      - DEMONSTRATION_MODE=false
+    command: /entrypoint.sh test
+    volumes:
+      - ./coverage:/opt/coverage
+
+#  train-router:
+#    build: .
+#    container_name: train-router
+#    env_file:
+#      - .env
+#    environment:
+#      - REDIS_HOST=redis
+#    command: /entrypoint.sh run
+
   redis:
       image: "redis:alpine"
       ports:
         - "6379:6379"
+  rabbitmq:
+      image: "rabbitmq:3.9-management-alpine"
+      ports:
+        - "5672:5672"
+        - "15672:15672"
+      environment:
+        - "RABBITMQ_DEFAULT_USER=admin"
+        - "RABBITMQ_DEFAULT_PASS=admin"
+        - "RABBITMQ_DEFAULT_VHOST=/"
+        - "RABBITMQ_ERLANG_COOKIE=admin"
+        - "RABBITMQ_NODENAME=rabbit"

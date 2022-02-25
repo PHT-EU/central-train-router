@@ -9,10 +9,13 @@ pika = "*"
 requests = "*"
 redis = "*"
 pht-train-container-library = "*"
+loguru = "*"
 
 [dev-packages]
 python-dotenv = "*"
 pytest = "*"
+coverage = "*"
+
 
 [requires]
 python_version = "3.9"

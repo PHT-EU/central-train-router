@@ -6,6 +6,7 @@ on:
     branches:
       - master
       - seed
+      - dev
 
     # Publish `v1.2.3` tags as releases.
     tags:
@@ -21,8 +22,35 @@ env:
 jobs:
   # Push image to GitHub Packages.
   # See also https://docs.docker.com/docker-hub/builds/
+
+  test-and-codecov:
+    runs-on: [ self-hosted, linux, x64, docker ]
+    env:
+      HARBOR_URL: ${{ secrets.DEV_REGISTRY }}
+      HARBOR_USER: ${{ secrets.DEV_REGISTRY_USER }}
+      HARBOR_PW: ${{ secrets.DEV_REGISTRY_PASSWORD }}
+      VAULT_URL: ${{ secrets.DEV_VAULT_URL }}
+      VAULT_TOKEN: ${{ secrets.DEV_VAULT_TOKEN }}
+    steps:
+      - uses: actions/checkout@v2
+      - name: Run container tests and upload coverage
+        run: |
+          chmod +x entrypoint.sh
+          docker-compose up -d --build test-router redis rabbitmq
+          TEST_CONTAINER_ID=$(docker inspect -f '{{.Name}}' $(docker-compose ps -q test-router) | cut -c2-)
+          docker wait "$TEST_CONTAINER_ID"
+          docker-compose logs test-router
+          docker-compose down
+          curl -Os https://uploader.codecov.io/latest/linux/codecov
+          chmod +x codecov
+          ./codecov -t "${{ secrets.CODECOV_TOKEN }}" -f ./coverage/coverage.xml
+          
+          
+
+
+
   build-and-push-image:
-    runs-on: [self-hosted, linux, x64, docker]
+    runs-on: [ self-hosted, linux, x64, docker ]
     permissions:
       packages: write
       contents: read
@@ -54,6 +82,7 @@ jobs:
           [[ "${{ github.ref }}" == "refs/tags/"* ]] && VERSION=$(echo $VERSION | sed -e 's/^v//')
           # Use Docker `latest` tag convention
           [ "$VERSION" == "master" ] && VERSION=latest
+          [ "$VERSION" == "dev" ] && VERSION=dev
           echo IMAGE_ID=$IMAGE_ID
           echo VERSION=$VERSION
           docker tag $IMAGE_NAME $IMAGE_ID:$VERSION
