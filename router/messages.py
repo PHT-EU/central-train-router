@@ -19,7 +19,7 @@ class RouterResponse:
         message_dict = {
             "type": self.event.value,
             "data": {
-                "trainId": self.train_id,
+                "id": self.train_id,
                 "message": self.message,
                 "errorCode": self.error_code.value if self.error_code else None,
             }
