@@ -74,7 +74,7 @@ class TRConsumer(Consumer):
 def main():
     load_dotenv(find_dotenv())
     logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
-    tr_consumer = TRConsumer(os.getenv("AMPQ_URL"), "", routing_key="tr")
+    tr_consumer = TRConsumer(os.getenv("AMQP_URL"), "", routing_key="tr")
     tr_consumer.run()
 
 
