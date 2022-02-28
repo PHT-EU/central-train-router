@@ -118,7 +118,13 @@ class TrainRouter:
             response = self._stop_train(command.train_id)
 
         elif command.event_type == RouterEvents.TRAIN_PUSHED:
-            response = self._route_train(command.train_id)
+            # ignore system push events
+            if command.operator == "system":
+                logger.info(f"Train - {command.train_id} - Ignoring system push event")
+                response = RouterResponse(RouterResponseEvents.IGNORED, train_id=command.train_id,
+                                          message="Ignored system event")
+            else:
+                response = self._route_train(command.train_id)
 
         elif command.event_type == RouterEvents.TRAIN_STATUS:
             response = self._read_train_status(command.train_id)
@@ -142,16 +148,20 @@ class TrainRouter:
         logger.info("Initializing train {}", train_id)
         logger.info("Getting route from vault...")
         try:
-            vault_data = self.vault_client.secrets.kv.v2.read_secret_version(
+            vault_data = self.vault_client.secrets.kv.v1.read_secret(
                 path=train_id,
                 mount_point=self.vault_route_engine
             )
             logger.info("Success")
         except Exception as e:
             logger.error("Failed to get route from vault: {}", e)
-            raise (e)
+            return RouterResponse(
+                event=RouterResponseEvents.FAILED,
+                train_id=train_id,
+                message="Failed to get route from vault"
+            )
 
-        route = VaultRoute(**vault_data["data"]["data"])
+        route = VaultRoute(**vault_data["data"])
         logger.info("Initializing train in redis...")
         self.redis_store.register_train(route)
         logger.info("Success")
@@ -174,11 +184,28 @@ class TrainRouter:
         # if the train is not found return an error response
         except ValueError:
             logger.error("Train {} does not exist in redis", train_id)
-            return RouterResponse(
-                event=RouterResponseEvents.FAILED,
-                train_id=train_id,
-                error_code=RouterErrorCodes.TRAIN_NOT_FOUND)
 
+            logger.info("Attempting to recover route from vault...")
+            try:
+                # attempt to recover the route from vault by reinitializing the train
+                response = self._initialize_train(train_id)
+                if response.event == RouterResponseEvents.FAILED:
+                    logger.error("Failed to recover route from vault")
+                    return RouterResponse(
+                        event=RouterResponseEvents.FAILED,
+                        train_id=train_id,
+                        error_code=RouterErrorCodes.TRAIN_NOT_FOUND,
+                        message="Failed to recover route from vault"
+                    )
+                train_status = self.redis_store.get_train_status(train_id)
+                logger.info("Success")
+            except Exception as e:
+                logger.error("Failed to get route from vault: {}", e)
+
+                return RouterResponse(
+                    event=RouterResponseEvents.FAILED,
+                    train_id=train_id,
+                    error_code=RouterErrorCodes.TRAIN_NOT_FOUND)
         # if train is already running return error response
         if train_status == TrainStatus.STARTED or train_status == TrainStatus.RUNNING:
             logger.error("Train {} is already started.", train_id)
@@ -311,7 +338,16 @@ class TrainRouter:
 
         # move train to next station
         logger.info("Train {} moving from station {} to next station {}", train_id, current_station, next_station)
-        self._move_train(train_id=train_id, origin=current_station, dest=next_station)
+        try:
+            self._move_train(train_id=train_id, origin=current_station, dest=next_station)
+
+        except Exception as e:
+            logger.error("Error moving train {} from {} to {}: {}", train_id, current_station, next_station, e)
+            return RouterResponse(
+                event=RouterResponseEvents.FAILED,
+                train_id=train_id,
+                message=f"Error moving train - Origin: {current_station} - Destination: {next_station}"
+            )
         return RouterResponse(
             event=RouterResponseEvents.MOVED,
             train_id=train_id,
@@ -368,15 +404,9 @@ class TrainRouter:
         return vault_routes
 
     def _remove_route_from_vault(self, train_id: str) -> None:
-        self.vault_client.secrets.kv.v2.delete_secret_versions(
+        self.vault_client.secrets.kv.v1.delete_secret(
             path=train_id,
-            mount_point="kv-pht-routes",
-            versions=[1, 2, 3, 4]
-        )
-        self.vault_client.secrets.kv.v2.destroy_secret_versions(
-            path=train_id,
-            mount_point="kv-pht-routes",
-            versions=[1, 2, 3, 4]
+            mount_point="routes"
         )
         logger.info(f"Removed route for train {train_id} from vault")
 
@@ -400,18 +430,37 @@ class TrainRouter:
 
         else:
             url = f"{self.harbor_api_url}/projects/station_{dest}/repositories/{train_id}/artifacts"
-        params_latest = {"from": f"{origin}/{train_id}:latest"}
-        params_base = {"from": f"{origin}/{train_id}:base"}
+
+        if origin == UtilityStations.INCOMING.value:
+            params_latest = {"from": f"{origin}/{train_id}:latest"}
+            params_base = {"from": f"{origin}/{train_id}:base"}
+        else:
+            params_latest = {"from": f"station_{origin}/{train_id}:latest"}
+            params_base = {"from": f"station_{origin}/{train_id}:base"}
 
         # Move base image
         logger.info("Moving train images...")
         icon = u'\u2713'
         if not outgoing:
             base_r = requests.post(url=url, headers=self.harbor_headers, auth=self.harbor_auth, params=params_base)
+            try:
+                base_r.raise_for_status()
+            except Exception as e:
+                print(base_r.text)
+                logger.error(f"Train - {train_id} - Error moving base image: {e}")
+                raise e
+
             logger.info(f"base: {icon}")
 
         # Move latest image
         latest_r = requests.post(url=url, headers=self.harbor_headers, auth=self.harbor_auth, params=params_latest)
+        try:
+            latest_r.raise_for_status()
+        except Exception as e:
+            print(latest_r.text)
+            logger.error(f"Train - {train_id} - Error moving latest image: {e}")
+            raise e
+
         logger.info(f"latest: {icon}")
 
         if delete:

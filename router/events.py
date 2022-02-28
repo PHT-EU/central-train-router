@@ -24,6 +24,7 @@ class RouterResponseEvents(Enum):
     BUILT = "trainBuilt"
     COMPLETED = "trainCompleted"
     MOVED = "trainMoved"
+    IGNORED = "trainIgnored"
 
 
 class RouterErrorCodes(Enum):
