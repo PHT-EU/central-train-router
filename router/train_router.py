@@ -1,6 +1,7 @@
 import os
 from pprint import pprint
 
+import docker
 import redis
 import requests
 from typing import List
@@ -35,6 +36,10 @@ class TrainRouter:
     auto_start: bool = False
     demo_mode: bool = False
     demo_stations: dict = None
+    docker_client: docker.DockerClient
+    interop_registry: str
+    interop_registry_username: str
+    interop_registry_password: str
 
     def __init__(self):
         # setup connections to external services
@@ -92,6 +97,8 @@ class TrainRouter:
         self.redis_store = RouterRedisStore(self.redis)
         logger.info("Successfully connected to Redis")
 
+        self._setup_docker_registries()
+
         # class variables for running train router in demonstration mode
         self.auto_start = os.getenv("AUTO_START") == "true"
         self.demo_mode = os.getenv("DEMONSTRATION_MODE") == "true"
@@ -99,6 +106,36 @@ class TrainRouter:
             self.demo_stations = {}
             logger.info("Demonstration mode detected, attempting to load demo stations")
             self._get_demo_stations()
+
+    def _setup_docker_registries(self):
+        logger.info("Setting up docker client from environment")
+        self.docker_client = docker.from_env()
+        logger.info("Successfully connected to Docker")
+
+        logger.info("Loging into registries...")
+        logger.info("Logging into Tue Harbor...")
+        login_result = self.docker_client.login(username=self.harbor_user,
+                                                password=self.harbor_password,
+                                                registry=os.getenv("HARBOR_URL"))
+
+        if login_result['Status'] != 'Login Succeeded':
+            logger.error(f"Failed to login to Tue Harbor \n {login_result}")
+
+        logger.info(f"Log in result Tue: {login_result['Status']}")
+        logger.info("Logging into interop registry...")
+
+        self.interop_registry = os.getenv("INTEROP_REGISTRY_URL")
+        self.interop_registry_username = os.getenv("INTEROP_REGISTRY_USER")
+        self.interop_registry_password = os.getenv("INTEROP_REGISTRY_PASSWORD")
+
+        login_result = self.docker_client.login(username=self.interop_registry_username,
+                                                password=self.interop_registry_password,
+                                                registry=self.interop_registry)
+
+        if login_result['Status'] != 'Login Succeeded':
+            logger.error(f"Failed to login to Interop registry \n {login_result}")
+
+        logger.info(f"Log in result interop: {login_result['Status']}")
 
     def process_command(self, command: RouterCommand) -> RouterResponse:
         """
@@ -428,6 +465,10 @@ class TrainRouter:
         elif dest == UtilityStations.INCOMING.value:
             url = f"{self.harbor_api_url}/projects/{dest}/repositories/{train_id}/artifacts"
 
+        elif dest == UtilityStations.INTEROP.value:
+            url = f"{self.harbor_api_url}/projects/{dest}/repositories/{train_id}/artifacts"
+            self._transfer_interop(train_id, origin)
+
         else:
             url = f"{self.harbor_api_url}/projects/station_{dest}/repositories/{train_id}/artifacts"
 
@@ -568,3 +609,6 @@ class TrainRouter:
             demo_station = DemoStation(**demo_station_data["data"]["data"])
 
             self.demo_stations[demo_station.id] = demo_station
+
+    def _transfer_interop(self, train_id: str, origin: str):
+        docker_client = docker.from_env()
