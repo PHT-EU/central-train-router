@@ -25,6 +25,7 @@ class RouterResponseEvents(Enum):
     COMPLETED = "trainCompleted"
     MOVED = "trainMoved"
     IGNORED = "trainIgnored"
+    RESET = "trainReset"
 
 
 class RouterErrorCodes(Enum):
@@ -36,3 +37,4 @@ class RouterErrorCodes(Enum):
     TRAIN_ALREADY_STOPPED = 2
     TRAIN_NOT_STARTED = 3
     TRAIN_NOT_RUNNING = 4
+    INTERNAL_ERROR = 99

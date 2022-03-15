@@ -24,6 +24,7 @@ class RouteTypes(Enum):
 class UtilityStations(Enum):
     INCOMING = "pht_incoming"
     OUTGOING = "pht_outgoing"
+    INTEROP = "interop"
 
     @classmethod
     def has_value(cls, value):
