@@ -26,6 +26,7 @@ class TrainRouter:
     vault_headers: dict
     vault_route_engine: str = "routes"
     harbor_api_url: str
+    harbor_url: str
     harbor_user: str
     harbor_password: str
     harbor_headers: dict
@@ -40,6 +41,7 @@ class TrainRouter:
     interop_registry: str
     interop_registry_username: str
     interop_registry_password: str
+    interop_registry_project: str
 
     def __init__(self):
         # setup connections to external services
@@ -67,7 +69,8 @@ class TrainRouter:
         logger.info("Successfully connected to Vault")
 
         logger.info("Setting up harbor connection, with environment variables")
-        self.harbor_api_url = os.getenv("HARBOR_URL") + "/api/v2.0"
+        self.harbor_url = os.getenv("HARBOR_URL")
+        self.harbor_api_url = self.harbor_url + "/api/v2.0"
         if not self.harbor_api_url:
             raise ValueError("HARBOR_URL not set in environment variables")
         self.harbor_user = os.getenv("HARBOR_USER")
@@ -116,7 +119,7 @@ class TrainRouter:
         logger.info("Logging into Tue Harbor...")
         login_result = self.docker_client.login(username=self.harbor_user,
                                                 password=self.harbor_password,
-                                                registry=os.getenv("HARBOR_URL"))
+                                                registry=self.harbor_url)
 
         if login_result['Status'] != 'Login Succeeded':
             logger.error(f"Failed to login to Tue Harbor \n {login_result}")
@@ -127,6 +130,7 @@ class TrainRouter:
         self.interop_registry = os.getenv("INTEROP_REGISTRY_URL")
         self.interop_registry_username = os.getenv("INTEROP_REGISTRY_USER")
         self.interop_registry_password = os.getenv("INTEROP_REGISTRY_PASSWORD")
+        self.interop_registry_project = os.getenv("INTEROP_REGISTRY_PROJECT")
 
         login_result = self.docker_client.login(username=self.interop_registry_username,
                                                 password=self.interop_registry_password,
@@ -424,7 +428,6 @@ class TrainRouter:
             logger.error("Error while getting routes from vault: {}", e)
             return []
         secret_keys = vault_secrets.get("data").get("keys")
-        pprint(secret_keys)
         if not secret_keys:
             return []
         vault_routes = []
@@ -466,7 +469,6 @@ class TrainRouter:
             url = f"{self.harbor_api_url}/projects/{dest}/repositories/{train_id}/artifacts"
 
         elif dest == UtilityStations.INTEROP.value:
-            url = f"{self.harbor_api_url}/projects/{dest}/repositories/{train_id}/artifacts"
             self._transfer_interop(train_id, origin)
 
         else:
@@ -480,48 +482,76 @@ class TrainRouter:
             params_base = {"from": f"station_{origin}/{train_id}:base"}
 
         # Move base image
-        logger.info("Moving train images...")
+        logger.info(f"Train {train_id} -- Moving train images...")
         icon = u'\u2713'
-        if not outgoing:
-            base_r = requests.post(url=url, headers=self.harbor_headers, auth=self.harbor_auth, params=params_base)
+        if dest == UtilityStations.INTEROP.value:
+            pass
+        else:
+
+            if not outgoing:
+                self._move_artifacts(url, params_base)
+                base_r = requests.post(url=url, headers=self.harbor_headers, auth=self.harbor_auth, params=params_base)
+                try:
+                    base_r.raise_for_status()
+                except Exception as e:
+                    print(base_r.text)
+                    logger.error(f"Train - {train_id} - Error moving base image: {e}")
+                    raise e
+
+                logger.info(f"base: {icon}")
+
+            # Move latest image
+            latest_r = requests.post(url=url, headers=self.harbor_headers, auth=self.harbor_auth, params=params_latest)
             try:
-                base_r.raise_for_status()
+                latest_r.raise_for_status()
             except Exception as e:
-                print(base_r.text)
-                logger.error(f"Train - {train_id} - Error moving base image: {e}")
+                print(latest_r.text)
+                logger.error(f"Train - {train_id} - Error moving latest image: {e}")
                 raise e
 
-            logger.info(f"base: {icon}")
-
-        # Move latest image
-        latest_r = requests.post(url=url, headers=self.harbor_headers, auth=self.harbor_auth, params=params_latest)
-        try:
-            latest_r.raise_for_status()
-        except Exception as e:
-            print(latest_r.text)
-            logger.error(f"Train - {train_id} - Error moving latest image: {e}")
-            raise e
-
-        logger.info(f"latest: {icon}")
+            logger.info(f"latest: {icon}")
 
         if delete:
             delete_url = f"{self.harbor_api_url}/projects/{origin}/repositories/{train_id}"
             r_delete = requests.delete(delete_url, auth=self.harbor_auth, headers=self.harbor_headers)
             logger.info(f"Deleted old artifacts \n {r_delete.text}")
 
+    def _move_artifacts(self, url: str, params: dict):
+        r = requests.post(url=url, headers=self.harbor_headers, auth=self.harbor_auth, params=params)
+        try:
+            r.raise_for_status()
+        except Exception as e:
+            logger.error(f"Error moving image -- url: {url}, params: {params}: \n{e}")
+            logger.error(r.text)
+            raise e
+
     def _reset_train(self, train_id: str):
         # todo delete latest image and replace with base image
-        # Get the stored route data from vault
-        route = self.vault_client.secrets.kv.v1.read_secret(path=train_id, mount_point="routes")
-        route = VaultRoute(**route.get("data"))
-        # Find the train and move it back to incoming project
-        self._find_train_and_reset(train_id)
-        # check if the train exists in redis if so remove it
-        if self.redis_store.exists(train_id):
-            self.redis_store.remove_train_from_store(train_id)
+        try:
+            # Get the stored route data from vault
+            route = self.vault_client.secrets.kv.v1.read_secret(path=train_id, mount_point="routes")
+            route = VaultRoute(**route.get("data"))
+            # Find the train and move it back to incoming project
+            self._find_train_and_reset(train_id)
+            # check if the train exists in redis if so remove it
+            if self.redis_store.exists(train_id):
+                self.redis_store.remove_train_from_store(train_id)
 
-        # Initialize the train again
-        self.redis_store.register_train(route)
+            # Initialize the train again
+            self.redis_store.register_train(route)
+
+            return RouterResponse(
+                event=RouterResponseEvents.RESET,
+                train_id=train_id,
+                error_code=RouterErrorCodes.TRAIN_NOT_FOUND
+            )
+        except Exception as e:
+            logger.error(f"Train - {train_id} - Error resetting train: {e}")
+            return RouterResponse(
+                event=RouterResponseEvents.FAILED,
+                train_id=train_id,
+                error_code=RouterErrorCodes.INTERNAL_ERROR
+            )
 
     def _find_train_and_reset(self, train_id: str):
         incoming_repo = UtilityStations.INCOMING.value
@@ -611,4 +641,28 @@ class TrainRouter:
             self.demo_stations[demo_station.id] = demo_station
 
     def _transfer_interop(self, train_id: str, origin: str):
-        docker_client = docker.from_env()
+
+        try:
+            origin = UtilityStations(origin)
+            image_name = f"{self.harbor_url}/{origin.value}/{train_id}"
+        except ValueError:
+            image_name = f"{self.harbor_url}/station_{origin}/{train_id}"
+
+        image_name = image_name.replace("https://", "")
+        logger.info(f"Transferring Train: {train_id} from {origin} to {self.interop_registry}")
+
+        logger.info(f"Pulling image {image_name} and re-tagging...")
+        image = self.docker_client.images.pull(image_name, tag="latest")
+        interop_repo_name = f"{self.interop_registry}/{self.interop_registry_project}/{train_id}"
+        image.tag(repository=interop_repo_name, tag="latest")
+
+        # push the image to the interop registry
+        logger.info(f"Pushing image {interop_repo_name} to {self.interop_registry}")
+        push_result = self.docker_client.images.push(interop_repo_name, tag="latest")
+
+        logger.debug(f"Push result: {push_result}")
+
+        logger.info("Removing images...")
+        self.docker_client.images.remove(image=f"{image_name}:latest", force=True)
+        self.docker_client.images.remove(image=interop_repo_name + ":latest", force=True)
+        logger.info("Done!")
