@@ -470,7 +470,11 @@ class TrainRouter:
 
         elif dest == UtilityStations.INTEROP.value:
             self._transfer_interop(train_id, origin)
-
+            if delete:
+                delete_url = f"{self.harbor_api_url}/projects/{origin}/repositories/{train_id}"
+                r_delete = requests.delete(delete_url, auth=self.harbor_auth, headers=self.harbor_headers)
+                logger.info(f"Deleted old artifacts \n {r_delete.text}")
+            return
         else:
             url = f"{self.harbor_api_url}/projects/station_{dest}/repositories/{train_id}/artifacts"
 
